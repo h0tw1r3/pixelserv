@@ -12,9 +12,7 @@
 #define DEFAULT_IP "0.0.0.0"    // default IP address = all
 #define DEFAULT_PORT "80"       // the default port users will be connecting to
 
-#ifdef DROP_ROOT
 #define DEFAULT_USER "nobody"   // nobody used by dnsmasq
-#endif
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -264,10 +262,8 @@ int main(int argc, char *argv[])        // program start
 
   char ifname[IFNAMSIZ];
 
-#ifdef DROP_ROOT
   char user[8] = DEFAULT_USER;  // used to be long enough
   struct passwd *pw;
-#endif
 
 #ifdef READ_FILE
   char *fname = NULL;
@@ -464,12 +460,10 @@ int main(int argc, char *argv[])        // program start
           strncpy(port, argv[++i], sizeof port);
           port[sizeof port - 1] = '\0';
           break;
-#ifdef DROP_ROOT
         case 'u':
           strncpy(user, argv[++i], sizeof user);
           user[sizeof user - 1] = '\0';
           break;
-#endif
 #ifdef READ_FILE
 #ifdef READ_GIF
         case 'g':
@@ -499,9 +493,7 @@ int main(int argc, char *argv[])        // program start
     printf("Usage:%s" " [IP No/hostname (all)]"
            " [-p port (80)]"
            " [-n i/f (all)]"
-#ifdef DROP_ROOT
            " [-u user (\"nobody\")]"
-#endif
 #ifdef READ_FILE
            " [-f response.bin]"
 #ifdef READ_GIF
@@ -640,17 +632,19 @@ int main(int argc, char *argv[])        // program start
 #endif
   }
 
-#ifdef DROP_ROOT
   if ((pw = getpwnam(user)) == NULL) {
     syslog(LOG_ERR, "Unknown user \"%s\"", user);
     exit(EXIT_FAILURE);
   }
-
-  if (setuid(pw->pw_uid)) {
-    syslog(LOG_ERR, "setuid %d: %s\n", pw->pw_uid, strerror(errno));
-    exit(EXIT_FAILURE);
+  
+  if (getuid() == 0) {
+    if (setuid(pw->pw_uid)) {
+      syslog(LOG_ERR, "setuid %d: %s\n", pw->pw_uid, strerror(errno));
+      exit(EXIT_FAILURE);
+    }
+  } else {
+    syslog(LOG_NOTICE, "Not running as root, ignoring setuid(%d)\n", pw->pw_uid);
   }
-#endif
 
   if (sizeof ifname > 0) {
       syslog(LOG_NOTICE, "Listening on %s %s:%s", ifname, ip_addr, port);
