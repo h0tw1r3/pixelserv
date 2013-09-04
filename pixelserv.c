@@ -646,11 +646,7 @@ int main(int argc, char *argv[])        // program start
     syslog(LOG_NOTICE, "Not running as root, ignoring setuid(%d)\n", pw->pw_uid);
   }
 
-  if (sizeof ifname > 0) {
-      syslog(LOG_NOTICE, "Listening on %s %s:%s", ifname, ip_addr, port);
-  } else {
-      syslog(LOG_NOTICE, "Listening on %s:%s", ip_addr, port);
-  }
+  syslog(LOG_NOTICE, "Listening on %s %s:%s", ifname, use_ip ? ip_addr : "*", port);
 
   while (1) {                   /* main accept() loop */
     sin_size = sizeof their_addr;
