@@ -577,7 +577,7 @@ int main(int argc, char *argv[])        // program start
   hints.ai_family = AF_UNSPEC;    // AF_UNSPEC - AF_INET restricts to IPV4
   hints.ai_socktype = SOCK_STREAM;
   if (use_ip == 0) {
-    hints.ai_flags = AI_PASSIVE;        // use my IP
+    hints.ai_flags = AI_PASSIVE | AI_ADDRCONFIG;        // use my IP
   }
 
   rv = getaddrinfo(use_ip ? ip_addr : NULL, port, &hints, &servinfo);
@@ -596,10 +596,15 @@ int main(int argc, char *argv[])        // program start
       /* send short packets straight away */
       || (setsockopt(sockfd, SOL_TCP, TCP_NODELAY, &yes, sizeof(int)) != OK)
       /* try to prevent hanging processes in FIN_WAIT2 */
-      || (setsockopt(sockfd, SOL_TCP, TCP_LINGER2, (void *)&n, sizeof n) != OK)
-      || (bind(sockfd, servinfo->ai_addr, servinfo->ai_addrlen) != OK)
+      || (setsockopt(sockfd, SOL_TCP, TCP_LINGER2, (void *)&n, sizeof n) != OK))
+  {
+    syslog(LOG_ERR, "Failed to setsockopt: %m");
+    exit(EXIT_FAILURE);
+  }
+
+  if ((bind(sockfd, servinfo->ai_addr, servinfo->ai_addrlen) != OK)
       || (listen(sockfd, BACKLOG) != OK)) {
-    syslog(LOG_ERR, "Abort: %m");
+    syslog(LOG_ERR, "Socket bind failure: %m");
     exit(EXIT_FAILURE);
   }
 
