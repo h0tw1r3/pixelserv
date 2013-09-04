@@ -12,10 +12,6 @@
 #define DEFAULT_IP "0.0.0.0"    // default IP address = all
 #define DEFAULT_PORT "80"       // the default port users will be connecting to
 
-#ifdef IF_MODE
-#define DEFAULT_IF ""           // default interface was br0, blank all
-#endif
-
 #ifdef DROP_ROOT
 #define DEFAULT_USER "nobody"   // nobody used by dnsmasq
 #endif
@@ -266,9 +262,7 @@ int main(int argc, char *argv[])        // program start
   char port[6] = DEFAULT_PORT;  // not sure how long this can be, use number if name too long
   int i;
 
-#ifdef IF_MODE
-  char ifname[IFNAMSIZ] = DEFAULT_IF;
-#endif
+  char ifname[IFNAMSIZ];
 
 #ifdef DROP_ROOT
   char user[8] = DEFAULT_USER;  // used to be long enough
@@ -462,12 +456,10 @@ int main(int argc, char *argv[])        // program start
     if (argv[i][0] == '-') {
       if ((i + 1) < argc) {
         switch (argv[i][1]) {
-#ifdef IF_MODE
         case 'n':
           strncpy(ifname, argv[++i], IFNAMSIZ);
           ifname[IFNAMSIZ - 1] = '\0';
           break;
-#endif
         case 'p':
           strncpy(port, argv[++i], sizeof port);
           port[sizeof port - 1] = '\0';
@@ -506,9 +498,7 @@ int main(int argc, char *argv[])        // program start
 #ifndef TINY
     printf("Usage:%s" " [IP No/hostname (all)]"
            " [-p port (80)]"
-#ifdef IF_MODE
            " [-n i/f (all)]"
-#endif
 #ifdef DROP_ROOT
            " [-u user (\"nobody\")]"
 #endif
@@ -592,7 +582,7 @@ int main(int argc, char *argv[])        // program start
 #endif
 
   memset(&hints, 0, sizeof hints);
-  hints.ai_family = AF_INET;    // AF_UNSPEC - AF_INET restricts to IPV4
+  hints.ai_family = AF_UNSPEC;    // AF_UNSPEC - AF_INET restricts to IPV4
   hints.ai_socktype = SOCK_STREAM;
   if (use_ip == 0) {
     hints.ai_flags = AI_PASSIVE;        // use my IP
@@ -604,14 +594,13 @@ int main(int argc, char *argv[])        // program start
     exit(EXIT_FAILURE);
   }
 
-  if (((sockfd =
-        socket(servinfo->ai_family, servinfo->ai_socktype,
-               servinfo->ai_protocol)) < 1)
-      || (setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(int)) != OK)
-#ifdef IF_MODE
+  if ((sockfd = socket(servinfo->ai_family, servinfo->ai_socktype, servinfo->ai_protocol)) < 1) {
+      syslog(LOG_ERR, "Failed to create socket: %m");
+      exit(EXIT_FAILURE);
+  }
+  if ((setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(int)) != OK)
       /* only use selected i/f */
-      || (setsockopt(sockfd, SOL_SOCKET, SO_BINDTODEVICE, ifname, IFNAMSIZ) != OK)
-#endif
+      || (strlen(ifname) > 0 && (setsockopt(sockfd, SOL_SOCKET, SO_BINDTODEVICE, ifname, IFNAMSIZ) != OK))
       /* send short packets straight away */
       || (setsockopt(sockfd, SOL_TCP, TCP_NODELAY, &yes, sizeof(int)) != OK)
       /* try to prevent hanging processes in FIN_WAIT2 */
@@ -663,11 +652,11 @@ int main(int argc, char *argv[])        // program start
   }
 #endif
 
-#ifdef IF_MODE
-  syslog(LOG_NOTICE, "Listening on %s %s:%s", ifname, ip_addr, port);
-#else
-  syslog(LOG_NOTICE, "Listening on %s:%s", ip_addr, port);
-#endif
+  if (sizeof ifname > 0) {
+      syslog(LOG_NOTICE, "Listening on %s %s:%s", ifname, ip_addr, port);
+  } else {
+      syslog(LOG_NOTICE, "Listening on %s:%s", ip_addr, port);
+  }
 
   while (1) {                   /* main accept() loop */
     sin_size = sizeof their_addr;

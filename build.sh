@@ -1,7 +1,7 @@
 #!/bin/sh
 
 SRC=pixelserv.c
-OPTS="-DDO_COUNT -DIF_MODE -DTEXT_REPLY -DDROP_ROOT -DVERBOSE -DREAD_FILE -DREAD_GIF -DNULLSERV_REPLIES -DSSL_RESP"
+OPTS="-DDO_COUNT -DTEXT_REPLY -DDROP_ROOT -DVERBOSE -DREAD_FILE -DREAD_GIF -DNULLSERV_REPLIES -DSSL_RESP"
 TEST_OPTS="-DTEST -DHEX_DUMP"
 
 CC="gcc" # -m32" 
@@ -9,8 +9,8 @@ CFLAGS="-Os -s -Wall -ffunction-sections -fdata-sections -fno-strict-aliasing"
 LDFLAGS="-Wl,--gc-sections"
 STRIP="strip -s -R .note -R .comment -R .gnu.version -R .gnu.version_r"
 BIN=pixelserv.host
-$CC $CFLAGS $OPTS $SRC -o $BIN
-$STRIP $BIN
+$CC $CFLAGS $OPTS $TEST_OPTS $SRC -o $BIN
+#$STRIP $BIN
 ls -laF $BIN
 
 # use Linksys Tomato toolchain (or teddy_bear tomatousb K26, Tornado dd-wrt)
