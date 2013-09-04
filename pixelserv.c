@@ -6,18 +6,18 @@
 
 #define VERSION "V32"
 
-#define BACKLOG 30	// how many pending connections queue will hold
-#define CHAR_BUF_SIZE 1023	//surprising how big requests can be with cookies etc
+#define BACKLOG 30              // how many pending connections queue will hold
+#define CHAR_BUF_SIZE 1023      //surprising how big requests can be with cookies etc
 
-#define DEFAULT_IP "0.0.0.0"	// default IP address = all
-#define DEFAULT_PORT "80"	// the default port users will be connecting to
+#define DEFAULT_IP "0.0.0.0"    // default IP address = all
+#define DEFAULT_PORT "80"       // the default port users will be connecting to
 
 #ifdef IF_MODE
-# define DEFAULT_IF ""	// default interface was br0, blank all
+#define DEFAULT_IF ""           // default interface was br0, blank all
 #endif
 
 #ifdef DROP_ROOT
-# define DEFAULT_USER "nobody"	// nobody used by dnsmasq
+#define DEFAULT_USER "nobody"   // nobody used by dnsmasq
 #endif
 
 #include <stdio.h>
@@ -28,840 +28,826 @@
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
-#include <netinet/tcp.h>	// for TCP_NODELAY
+#include <netinet/tcp.h>        // for TCP_NODELAY
 #include <netdb.h>
 #include <arpa/inet.h>
 #include <sys/wait.h>
 #include <signal.h>
 #include <syslog.h>
-#include <net/if.h>	// for IFNAMSIZ
-#include <pwd.h>	// for getpwnam
+#include <net/if.h>             // for IFNAMSIZ
+#include <pwd.h>                // for getpwnam
 
 #ifdef HEX_DUMP
 #include <ctype.h>
 /* from http://sws.dett.de/mini/hexdump-c/ */
 static void hex_dump(void *data, int size)
 {
-    /* dumps size bytes of *data to stdout. Looks like:
-     * [0000] 75 6E 6B 6E 6F 77 6E 20   30 FF 00 00 00 00 39 00 unknown 0.....9.
-     * (in a single line of course)
-     */
+  /* dumps size bytes of *data to stdout. Looks like:
+   * [0000] 75 6E 6B 6E 6F 77 6E 20   30 FF 00 00 00 00 39 00 unknown 0.....9.
+   * (in a single line of course)
+   */
 
-    unsigned char *p = data;
-    unsigned char c;
-    int n;
-    char bytestr[4] = {0};
-    char addrstr[10] = {0};
-    char hexstr[16*3 + 5] = {0};
-    char charstr[16*1 + 5] = {0};
-    for (n = 1; n <= size; n++) {
-        if (n%16 == 1) {
-            /* store address for this line */
-            snprintf(addrstr, sizeof addrstr, "%.4x",
-               ((unsigned int)p-(unsigned int)data) );
-        }
-            
-        c = *p;
-        if (isprint(c) == 0) {
-            c = '.';
-        }
-
-        /* store hex str (for left side) */
-        snprintf(bytestr, sizeof bytestr, "%02X ", *p);
-        strncat(hexstr, bytestr, sizeof hexstr - strlen(hexstr) - 1);
-
-        /* store char str (for right side) */
-        snprintf(bytestr, sizeof bytestr, "%c", c);
-        strncat(charstr, bytestr, sizeof charstr - strlen(charstr) - 1);
-
-        if(n%16 == 0) { 
-            /* line completed */
-            printf("[%4.4s]   %-50.50s  %s\n", addrstr, hexstr, charstr);
-            hexstr[0] = 0;
-            charstr[0] = 0;
-        } else if(n%8 == 0) {
-            /* half line: add whitespaces */
-            strncat(hexstr, "  ", sizeof hexstr - strlen(hexstr) - 1);
-            strncat(charstr, " ", sizeof charstr - strlen(charstr) - 1);
-        }
-
-        p++; /* next byte */
+  unsigned char *p = data;
+  unsigned char c;
+  int n;
+  char bytestr[4] = { 0 };
+  char addrstr[10] = { 0 };
+  char hexstr[16 * 3 + 5] = { 0 };
+  char charstr[16 * 1 + 5] = { 0 };
+  for (n = 1; n <= size; n++) {
+    if (n % 16 == 1) {
+      /* store address for this line */
+      snprintf(addrstr, sizeof addrstr, "%.4x",
+               ((unsigned int)p - (unsigned int)data));
     }
 
-    if (strlen(hexstr) > 0) {
-        /* print rest of buffer if not empty */
-        printf("[%4.4s]   %-50.50s  %s\n", addrstr, hexstr, charstr);
+    c = *p;
+    if (isprint(c) == 0) {
+      c = '.';
     }
+
+    /* store hex str (for left side) */
+    snprintf(bytestr, sizeof bytestr, "%02X ", *p);
+    strncat(hexstr, bytestr, sizeof hexstr - strlen(hexstr) - 1);
+
+    /* store char str (for right side) */
+    snprintf(bytestr, sizeof bytestr, "%c", c);
+    strncat(charstr, bytestr, sizeof charstr - strlen(charstr) - 1);
+
+    if (n % 16 == 0) {
+      /* line completed */
+      printf("[%4.4s]   %-50.50s  %s\n", addrstr, hexstr, charstr);
+      hexstr[0] = 0;
+      charstr[0] = 0;
+    } else if (n % 8 == 0) {
+      /* half line: add whitespaces */
+      strncat(hexstr, "  ", sizeof hexstr - strlen(hexstr) - 1);
+      strncat(charstr, " ", sizeof charstr - strlen(charstr) - 1);
+    }
+
+    p++;                        /* next byte */
+  }
+
+  if (strlen(hexstr) > 0) {
+    /* print rest of buffer if not empty */
+    printf("[%4.4s]   %-50.50s  %s\n", addrstr, hexstr, charstr);
+  }
 }
 #endif
 
-
 #ifdef READ_FILE
-# include <sys/stat.h>
+#include <sys/stat.h>
 #endif
 
 #ifdef TEST
-# define TEXT_REPLY 1
-# define VERBOSE 1
-# define TESTPRINT printf
+#define TEXT_REPLY 1
+#define VERBOSE 1
+#define TESTPRINT printf
 #else
-# define TESTPRINT(x,y...)
+#define TESTPRINT(x,y...)
 #endif
 
 #ifdef VERBOSE
-# define MYLOG syslog
-#else	// rely on optimiser to remove redundant code
-# define MYLOG(x,y...)
+#define MYLOG syslog
+#else                           // rely on optimiser to remove redundant code
+#define MYLOG(x,y...)
 #endif
 
 #ifdef TINY
 /* redefine log functions to NULL */
-# define openlog(x,y...)
-# define syslog(x,y...)
+#define openlog(x,y...)
+#define syslog(x,y...)
 #endif
 
 #define OK (0)
 #define ERROR (-1)
 
 enum responsetypes {
-	SEND_GIF = 10,
-	SEND_TXT,
-	SEND_JPG, 
-	SEND_PNG,
-	SEND_SWF,
-	SEND_BAD,
-	SEND_SSL
+  SEND_GIF = 10,
+  SEND_TXT,
+  SEND_JPG,
+  SEND_PNG,
+  SEND_SWF,
+  SEND_BAD,
+  SEND_SSL
 };
 
 #ifdef DO_COUNT
 volatile sig_atomic_t count = 0;
 volatile sig_atomic_t gif = 0;
 volatile sig_atomic_t err = 0;
-# ifdef TEXT_REPLY
+#ifdef TEXT_REPLY
 volatile sig_atomic_t txt = 0;
 volatile sig_atomic_t bad = 0;
-#  ifdef NULLSERV_REPLIES
+#ifdef NULLSERV_REPLIES
 volatile sig_atomic_t jpg = 0;
 volatile sig_atomic_t png = 0;
 volatile sig_atomic_t swf = 0;
-#  endif
-# ifdef SSL_RESP
+#endif
+#ifdef SSL_RESP
 volatile sig_atomic_t ssl = 0;
-# endif
-# endif	// TEXT_REPLY
-#endif	// DO_COUNT
+#endif
+#endif                          // TEXT_REPLY
+#endif                          // DO_COUNT
 
-void signal_handler(int sig)	// common signal handler
+void signal_handler(int sig)    // common signal handler
 {
-	int status;
-	switch (sig)
-	{
-	case SIGCHLD :	// ensure no zombie sub processes left */
-		while ( waitpid(-1, &status, WNOHANG) > 0 ) {
+  int status;
+  switch (sig) {
+  case SIGCHLD:                // ensure no zombie sub processes left */
+    while (waitpid(-1, &status, WNOHANG) > 0) {
 #ifdef DO_COUNT
-			if ( WIFEXITED(status) ) {
-				switch ( WEXITSTATUS(status) )
-				{
-					case EXIT_FAILURE :
-						err++;
-						break;
+      if (WIFEXITED(status)) {
+        switch (WEXITSTATUS(status)) {
+        case EXIT_FAILURE:
+          err++;
+          break;
 
-					case SEND_GIF :
-						gif++;
-						break;
-# ifdef TEXT_REPLY
-					case SEND_BAD :
-						bad++;
-						break;
+        case SEND_GIF:
+          gif++;
+          break;
+#ifdef TEXT_REPLY
+        case SEND_BAD:
+          bad++;
+          break;
 
-					case SEND_TXT :
-						txt++;
-						break;
-#  ifdef NULLSERV_REPLIES
-					case SEND_JPG :
-						jpg++;
-						break;
+        case SEND_TXT:
+          txt++;
+          break;
+#ifdef NULLSERV_REPLIES
+        case SEND_JPG:
+          jpg++;
+          break;
 
-					case SEND_PNG :
-						png++;
-						break;
+        case SEND_PNG:
+          png++;
+          break;
 
-					case SEND_SWF :
-						swf++;
-						break;
-#  endif	// NULLSERV_REPLIES
-#  ifdef SSL_RESP
-					case SEND_SSL :
-						ssl++;
-						break;
-#  endif
-# endif	// TEXT_REPLY
-				}
-			}
-#endif	// DO_COUNT
-		};
-		return;
+        case SEND_SWF:
+          swf++;
+          break;
+#endif                          // NULLSERV_REPLIES
+#ifdef SSL_RESP
+        case SEND_SSL:
+          ssl++;
+          break;
+#endif
+#endif                          // TEXT_REPLY
+        }
+      }
+#endif                          // DO_COUNT
+    };
+    return;
 
 #ifndef TINY
-	case SIGTERM :	// Handler for the SIGTERM signal (kill)
-		signal(sig, SIG_IGN);	// Ignore this signal while we are quiting
-# ifdef DO_COUNT
-	case SIGUSR1 :
-		syslog(LOG_INFO, "%d req, %d err, %d gif,"
-#  ifdef TEXT_REPLY
-			" %d bad, %d txt"
-#   ifdef NULLSERV_REPLIES
-			", %d jpg, %d png, %d swf"
-#   endif
-#   ifdef SSL_RESP
-			", %d ssl"
-#   endif
-#  endif	// TEXT_REPLY
-			, count, err, gif
-#  ifdef TEXT_REPLY
-			, bad, txt
-#   ifdef NULLSERV_REPLIES
-			, jpg, png, swf
-#   endif
-#   ifdef SSL_RESP
-			, ssl
-#   endif
-#  endif	// TEXT_REPLY
-		  );
+  case SIGTERM:                // Handler for the SIGTERM signal (kill)
+    signal(sig, SIG_IGN);       // Ignore this signal while we are quiting
+#ifdef DO_COUNT
+  case SIGUSR1:
+    syslog(LOG_INFO, "%d req, %d err, %d gif,"
+#ifdef TEXT_REPLY
+           " %d bad, %d txt"
+#ifdef NULLSERV_REPLIES
+           ", %d jpg, %d png, %d swf"
+#endif
+#ifdef SSL_RESP
+           ", %d ssl"
+#endif
+#endif                          // TEXT_REPLY
+           , count, err, gif
+#ifdef TEXT_REPLY
+           , bad, txt
+#ifdef NULLSERV_REPLIES
+           , jpg, png, swf
+#endif
+#ifdef SSL_RESP
+           , ssl
+#endif
+#endif                          // TEXT_REPLY
+        );
 
-		if (sig == SIGUSR1) {
-			return;
-		}
-
-# endif	// DO_COUNT
-		syslog (LOG_NOTICE, "exit on SIGTERM");
-		exit (EXIT_SUCCESS);
-#endif // TINY
-	}
+    if (sig == SIGUSR1) {
+      return;
+    }
+#endif                          // DO_COUNT
+    syslog(LOG_NOTICE, "exit on SIGTERM");
+    exit(EXIT_SUCCESS);
+#endif                          // TINY
+  }
 }
 
 #ifdef TEST
-void *get_in_addr(struct sockaddr *sa) // get sockaddr, IPv4 or IPv6
+void *get_in_addr(struct sockaddr *sa)  // get sockaddr, IPv4 or IPv6
 {
-	if (sa->sa_family == AF_INET) {
-		return &(( (struct sockaddr_in*) sa )->sin_addr);
-	}
+  if (sa->sa_family == AF_INET) {
+    return &(((struct sockaddr_in *)sa)->sin_addr);
+  }
 
-	return &(( (struct sockaddr_in6*) sa )->sin6_addr);
+  return &(((struct sockaddr_in6 *)sa)->sin6_addr);
 }
 #endif
 
-int main (int argc, char *argv[]) // program start
+int main(int argc, char *argv[])        // program start
 {
-	int sockfd;	// listen on sock_fd
-	int new_fd;	// new connection on new_fd
-	struct sockaddr_storage their_addr;	// connector's address information
-	socklen_t sin_size;
-	int yes = 1;
-	int n = -1;	// to turn off linger2
+  int sockfd;                   // listen on sock_fd
+  int new_fd;                   // new connection on new_fd
+  struct sockaddr_storage their_addr;   // connector's address information
+  socklen_t sin_size;
+  int yes = 1;
+  int n = -1;                   // to turn off linger2
 #ifdef TEST
-	char s[INET6_ADDRSTRLEN];
+  char s[INET6_ADDRSTRLEN];
 #endif
-	int rv;
-	char ip_addr[INET_ADDRSTRLEN] = DEFAULT_IP;
-	int use_ip = 0;
-	char buf[CHAR_BUF_SIZE + 1];
+  int rv;
+  char ip_addr[INET_ADDRSTRLEN] = DEFAULT_IP;
+  int use_ip = 0;
+  char buf[CHAR_BUF_SIZE + 1];
 
 #ifdef PORT_MODE
-	char port[6] = DEFAULT_PORT;	// not sure how long this can be, use number if name too long
+  char port[6] = DEFAULT_PORT;  // not sure how long this can be, use number if name too long
 #else
-# define port DEFAULT_PORT
+#define port DEFAULT_PORT
 #endif
-	int i;
-	
+  int i;
+
 #ifdef IF_MODE
-	char ifname[IFNAMSIZ] = DEFAULT_IF;
+  char ifname[IFNAMSIZ] = DEFAULT_IF;
 #endif
 
 #ifdef DROP_ROOT
-	char user[8] = DEFAULT_USER;	// used to be long enough
-	struct passwd *pw;
+  char user[8] = DEFAULT_USER;  // used to be long enough
+  struct passwd *pw;
 #endif
 
 #ifdef READ_FILE
-	char *fname = NULL;
-	int fsize;
-# ifdef READ_GIF
-	int do_gif = 0;
-# endif
-	int hsize = 0;
-	struct stat file_stat;
-	FILE *fp;
-#endif // READ_FILE
+  char *fname = NULL;
+  int fsize;
+#ifdef READ_GIF
+  int do_gif = 0;
+#endif
+  int hsize = 0;
+  struct stat file_stat;
+  FILE *fp;
+#endif                          // READ_FILE
 
-	static unsigned char httpnullpixel[] =
-	"HTTP/1.1 200 OK\r\n"
-	"Content-type: image/gif\r\n"
-	"Content-length: 43\r\n"
-	"Connection: close\r\n"
-	"\r\n"
-	"GIF89a\1\0\1\0\x80\0\0\xff\xff\xff\0\0\0\x21\xf9\4\1\0\0\0\0,\0\0\0\0\1\0\1\0\0\2\2\x44\1\0;";
+  static unsigned char httpnullpixel[] =
+      "HTTP/1.1 200 OK\r\n"
+      "Content-type: image/gif\r\n"
+      "Content-length: 43\r\n"
+      "Connection: close\r\n"
+      "\r\n"
+      "GIF89a\1\0\1\0\x80\0\0\xff\xff\xff\0\0\0\x21\xf9\4\1\0\0\0\0,\0\0\0\0\1\0\1\0\0\2\2\x44\1\0;";
 
 #ifdef TEXT_REPLY
-	static unsigned char httpnulltext[] =
-	"HTTP/1.1 200 OK\r\n"
-	"Content-type: text/html\r\n"
-	"Content-length: 0\r\n"
-	"Connection: close\r\n"
-	"\r\n";
+  static unsigned char httpnulltext[] =
+      "HTTP/1.1 200 OK\r\n"
+      "Content-type: text/html\r\n"
+      "Content-length: 0\r\n" "Connection: close\r\n" "\r\n";
 
-	static unsigned char http501[] =
-	"HTTP/1.1 501 Method Not Implemented\r\n"
-	"Connection: close\r\n"
-	"\r\n";
+  static unsigned char http501[] =
+      "HTTP/1.1 501 Method Not Implemented\r\n" "Connection: close\r\n" "\r\n";
 
 #ifdef NULLSERV_REPLIES
-static unsigned char httpnull_png[] =
-	"HTTP/1.1 200 OK\r\n"
-	"Content-type: image/png\r\n"
-	"Content-length: 114\r\n"
-	"Connection: close\r\n"
-	"\r\n"
-	"\x89\x50\x4e\x47\x0d\x0a\x1a\x0a\x00\x00\x00\x0d\x49\x48\x44\x52"
-	"\x00\x00\x00\x01\x00\x00\x00\x01\x01\x03\x00\x00\x00\x25\xdb\x56"
-	"\xca\x00\x00\x00\x03\x73\x42\x49\x54\x08\x08\x08\xdb\xe1\x4f\xe0"
-	"\x00\x00\x00\x06\x50\x4c\x54\x45\xff\xff\xff\x00\x00\x00\x55\xc2"
-	"\xd3\x7e\x00\x00\x00\x02\x74\x52\x4e\x53\x00\xff\x5b\x91\x22\xb5"
-	"\x00\x00\x00\x0a\x49\x44\x41\x54\x08\x99\x63\x60\x00\x00\x00\x02"
-	"\x00\x01\xf4\x71\x64\xa6\x00\x00\x00\x00\x49\x45\x4e\x44\xae\x42"
-	"\x60\x82";
+  static unsigned char httpnull_png[] =
+      "HTTP/1.1 200 OK\r\n"
+      "Content-type: image/png\r\n"
+      "Content-length: 114\r\n"
+      "Connection: close\r\n"
+      "\r\n"
+      "\x89\x50\x4e\x47\x0d\x0a\x1a\x0a\x00\x00\x00\x0d\x49\x48\x44\x52"
+      "\x00\x00\x00\x01\x00\x00\x00\x01\x01\x03\x00\x00\x00\x25\xdb\x56"
+      "\xca\x00\x00\x00\x03\x73\x42\x49\x54\x08\x08\x08\xdb\xe1\x4f\xe0"
+      "\x00\x00\x00\x06\x50\x4c\x54\x45\xff\xff\xff\x00\x00\x00\x55\xc2"
+      "\xd3\x7e\x00\x00\x00\x02\x74\x52\x4e\x53\x00\xff\x5b\x91\x22\xb5"
+      "\x00\x00\x00\x0a\x49\x44\x41\x54\x08\x99\x63\x60\x00\x00\x00\x02"
+      "\x00\x01\xf4\x71\x64\xa6\x00\x00\x00\x00\x49\x45\x4e\x44\xae\x42"
+      "\x60\x82";
 
-static unsigned char httpnull_jpg[] =
-	"HTTP/1.1 200 OK\r\n"
-	"Content-type: image/jpeg\r\n"
-	"Content-length: 142\r\n"
-	"Connection: close\r\n"
-	"\r\n"
-	"\xff\xd8\xff\xdb\x00\x43\x00\x01\x01\x01\x01\x01\x01\x01\x01\x01"
-	"\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01"
-	"\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01"
-	"\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01"
-	"\x01\x01\x01\x01\x01\x01\x01\xff\xc0\x00\x0b\x08\x00\x01\x00\x01"
-	"\x01\x01\x11\x00\xff\xc4\x00\x14\x00\x01\x00\x00\x00\x00\x00\x00"
-	"\x00\x00\x00\x00\x00\x00\x00\x00\x00\x0a\xff\xc4\x00\x14\x10\x01"
-	"\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"
-	"\xff\xda\x00\x08\x01\x01\x00\x00\x3f\x00\x7f\x0f\xff\xd9";
+  static unsigned char httpnull_jpg[] =
+      "HTTP/1.1 200 OK\r\n"
+      "Content-type: image/jpeg\r\n"
+      "Content-length: 142\r\n"
+      "Connection: close\r\n"
+      "\r\n"
+      "\xff\xd8\xff\xdb\x00\x43\x00\x01\x01\x01\x01\x01\x01\x01\x01\x01"
+      "\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01"
+      "\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01"
+      "\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01\x01"
+      "\x01\x01\x01\x01\x01\x01\x01\xff\xc0\x00\x0b\x08\x00\x01\x00\x01"
+      "\x01\x01\x11\x00\xff\xc4\x00\x14\x00\x01\x00\x00\x00\x00\x00\x00"
+      "\x00\x00\x00\x00\x00\x00\x00\x00\x00\x0a\xff\xc4\x00\x14\x10\x01"
+      "\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"
+      "\xff\xda\x00\x08\x01\x01\x00\x00\x3f\x00\x7f\x0f\xff\xd9";
 
-static unsigned char httpnull_swf[] =
-	"HTTP/1.1 200 OK\r\n"
-	"Content-type: application/x-shockwave-flash\r\n"
-	"Content-length: 1386\r\n"
-	"Connection: close\r\n"
-	"\r\n"
-	"\x88\x08\x02\x35\x00\x42\x75\x66\x66\x65\x72\x00\x4E\x61\x74\x69"
-	"\x76\x65\x00\x6C\x6F\x61\x64\x00\x42\x75\x66\x66\x65\x72\x5F\x6C"
-	"\x6F\x61\x64\x00\x70\x72\x6F\x74\x6F\x74\x79\x70\x65\x00\x64\x69"
-	"\x66\x66\x00\x42\x75\x66\x66\x65\x72\x5F\x64\x69\x66\x66\x00\x66"
-	"\x69\x6E\x64\x00\x42\x75\x66\x66\x65\x72\x5F\x66\x69\x6E\x64\x00"
-	"\x73\x75\x62\x00\x42\x75\x66\x66\x65\x72\x5F\x73\x75\x62\x00\x74"
-	"\x6F\x53\x74\x72\x69\x6E\x67\x00\x42\x75\x66\x66\x65\x72\x5F\x74"
-	"\x6F\x53\x74\x72\x69\x6E\x67\x00\x49\x6D\x61\x67\x65\x00\x63\x6F"
-	"\x6D\x70\x61\x72\x65\x00\x49\x6D\x61\x67\x65\x5F\x63\x6F\x6D\x70"
-	"\x61\x72\x65\x00\x73\x61\x76\x65\x00\x49\x6D\x61\x67\x65\x5F\x73"
-	"\x61\x76\x65\x00\x53\x6F\x63\x6B\x65\x74\x00\x63\x6C\x6F\x73\x65"
-	"\x00\x53\x6F\x63\x6B\x65\x74\x5F\x63\x6C\x6F\x73\x65\x00\x65\x72"
-	"\x72\x6F\x72\x00\x53\x6F\x63\x6B\x65\x74\x5F\x65\x72\x72\x6F\x72"
-	"\x00\x73\x65\x6E\x64\x00\x53\x6F\x63\x6B\x65\x74\x5F\x73\x65\x6E"
-	"\x64\x00\x63\x6C\x6F\x73\x65\x64\x00\x53\x6F\x63\x6B\x65\x74\x5F"
-	"\x67\x65\x74\x5F\x63\x6C\x6F\x73\x65\x64\x00\x61\x64\x64\x50\x72"
-	"\x6F\x70\x65\x72\x74\x79\x00\x54\x65\x73\x74\x00\x61\x64\x76\x61"
-	"\x6E\x63\x65\x00\x54\x65\x73\x74\x5F\x61\x64\x76\x61\x6E\x63\x65"
-	"\x00\x6D\x6F\x75\x73\x65\x5F\x6D\x6F\x76\x65\x00\x54\x65\x73\x74"
-	"\x5F\x6D\x6F\x75\x73\x65\x5F\x6D\x6F\x76\x65\x00\x6D\x6F\x75\x73"
-	"\x65\x5F\x70\x72\x65\x73\x73\x00\x54\x65\x73\x74\x5F\x6D\x6F\x75"
-	"\x73\x65\x5F\x70\x72\x65\x73\x73\x00\x6D\x6F\x75\x73\x65\x5F\x72"
-	"\x65\x6C\x65\x61\x73\x65\x00\x54\x65\x73\x74\x5F\x6D\x6F\x75\x73"
-	"\x65\x5F\x72\x65\x6C\x65\x61\x73\x65\x00\x72\x65\x6E\x64\x65\x72"
-	"\x00\x54\x65\x73\x74\x5F\x72\x65\x6E\x64\x65\x72\x00\x72\x65\x73"
-	"\x65\x74\x00\x54\x65\x73\x74\x5F\x72\x65\x73\x65\x74\x00\x72\x61"
-	"\x74\x65\x00\x54\x65\x73\x74\x5F\x67\x65\x74\x5F\x72\x61\x74\x65"
-	"\x00\x71\x75\x69\x74\x00\x54\x65\x73\x74\x5F\x67\x65\x74\x5F\x71"
-	"\x75\x69\x74\x00\x74\x72\x61\x63\x65\x00\x54\x65\x73\x74\x5F\x67"
-	"\x65\x74\x5F\x74\x72\x61\x63\x65\x00\x6C\x61\x75\x6E\x63\x68\x65"
-	"\x64\x00\x54\x65\x73\x74\x5F\x67\x65\x74\x5F\x6C\x61\x75\x6E\x63"
-	"\x68\x65\x64\x00\x70\x72\x69\x6E\x74\x00\x73\x00\x49\x4E\x46\x4F"
-	"\x3A\x20\x00\x45\x52\x52\x4F\x52\x3A\x20\x00\x96\x04\x00\x08\x00"
-	"\x08\x01\x1C\x96\x02\x00\x08\x00\x4E\x1D\x96\x02\x00\x08\x00\x1C"
-	"\x96\x04\x00\x08\x02\x08\x01\x1C\x96\x02\x00\x08\x03\x4E\x4F\x96"
-	"\x02\x00\x08\x00\x1C\x96\x07\x00\x08\x04\x07\x00\x00\x00\x00\x43"
-	"\x4F\x96\x02\x00\x08\x00\x1C\x96\x02\x00\x08\x04\x4E\x96\x04\x00"
-	"\x08\x05\x08\x01\x1C\x96\x02\x00\x08\x06\x4E\x4F\x96\x02\x00\x08"
-	"\x00\x1C\x96\x02\x00\x08\x04\x4E\x96\x04\x00\x08\x07\x08\x01\x1C"
-	"\x96\x02\x00\x08\x08\x4E\x4F\x96\x02\x00\x08\x00\x1C\x96\x02\x00"
-	"\x08\x04\x4E\x96\x04\x00\x08\x09\x08\x01\x1C\x96\x02\x00\x08\x0A"
-	"\x4E\x4F\x96\x02\x00\x08\x00\x1C\x96\x02\x00\x08\x04\x4E\x96\x04"
-	"\x00\x08\x0B\x08\x01\x1C\x96\x02\x00\x08\x0C\x4E\x4F\x96\x04\x00"
-	"\x08\x0D\x08\x01\x1C\x96\x02\x00\x08\x0D\x4E\x1D\x96\x02\x00\x08"
-	"\x0D\x1C\x96\x07\x00\x08\x04\x07\x00\x00\x00\x00\x43\x4F\x96\x02"
-	"\x00\x08\x0D\x1C\x96\x02\x00\x08\x04\x4E\x96\x04\x00\x08\x0E\x08"
-	"\x01\x1C\x96\x02\x00\x08\x0F\x4E\x4F\x96\x02\x00\x08\x0D\x1C\x96"
-	"\x02\x00\x08\x04\x4E\x96\x04\x00\x08\x10\x08\x01\x1C\x96\x02\x00"
-	"\x08\x11\x4E\x4F\x96\x02\x00\x08\x12\x9B\x05\x00\x00\x00\x00\x00"
-	"\x00\x1D\x96\x02\x00\x08\x12\x1C\x96\x07\x00\x08\x04\x07\x00\x00"
-	"\x00\x00\x43\x4F\x96\x02\x00\x08\x12\x1C\x96\x02\x00\x08\x04\x4E"
-	"\x96\x04\x00\x08\x13\x08\x01\x1C\x96\x02\x00\x08\x14\x4E\x4F\x96"
-	"\x02\x00\x08\x12\x1C\x96\x02\x00\x08\x04\x4E\x96\x04\x00\x08\x15"
-	"\x08\x01\x1C\x96\x02\x00\x08\x16\x4E\x4F\x96\x02\x00\x08\x12\x1C"
-	"\x96\x02\x00\x08\x04\x4E\x96\x04\x00\x08\x17\x08\x01\x1C\x96\x02"
-	"\x00\x08\x18\x4E\x4F\x96\x03\x00\x02\x08\x01\x1C\x96\x02\x00\x08"
-	"\x1A\x4E\x96\x09\x00\x08\x19\x07\x03\x00\x00\x00\x08\x12\x1C\x96"
-	"\x02\x00\x08\x04\x4E\x96\x02\x00\x08\x1B\x52\x17\x96\x04\x00\x08"
-	"\x1C\x08\x01\x1C\x96\x02\x00\x08\x1C\x4E\x1D\x96\x02\x00\x08\x1C"
-	"\x1C\x96\x07\x00\x08\x04\x07\x00\x00\x00\x00\x43\x4F\x96\x02\x00"
-	"\x08\x1C\x1C\x96\x02\x00\x08\x04\x4E\x96\x04\x00\x08\x1D\x08\x01"
-	"\x1C\x96\x02\x00\x08\x1E\x4E\x4F\x96\x02\x00\x08\x1C\x1C\x96\x02"
-	"\x00\x08\x04\x4E\x96\x04\x00\x08\x1F\x08\x01\x1C\x96\x02\x00\x08"
-	"\x20\x4E\x4F\x96\x02\x00\x08\x1C\x1C\x96\x02\x00\x08\x04\x4E\x96"
-	"\x04\x00\x08\x21\x08\x01\x1C\x96\x02\x00\x08\x22\x4E\x4F\x96\x02"
-	"\x00\x08\x1C\x1C\x96\x02\x00\x08\x04\x4E\x96\x04\x00\x08\x23\x08"
-	"\x01\x1C\x96\x02\x00\x08\x24\x4E\x4F\x96\x02\x00\x08\x1C\x1C\x96"
-	"\x02\x00\x08\x04\x4E\x96\x04\x00\x08\x25\x08\x01\x1C\x96\x02\x00"
-	"\x08\x26\x4E\x4F\x96\x02\x00\x08\x1C\x1C\x96\x02\x00\x08\x04\x4E"
-	"\x96\x04\x00\x08\x27\x08\x01\x1C\x96\x02\x00\x08\x28\x4E\x4F\x96"
-	"\x03\x00\x02\x08\x01\x1C\x96\x02\x00\x08\x2A\x4E\x96\x09\x00\x08"
-	"\x29\x07\x03\x00\x00\x00\x08\x1C\x1C\x96\x02\x00\x08\x04\x4E\x96"
-	"\x02\x00\x08\x1B\x52\x17\x96\x03\x00\x02\x08\x01\x1C\x96\x02\x00"
-	"\x08\x2C\x4E\x96\x09\x00\x08\x2B\x07\x03\x00\x00\x00\x08\x1C\x1C"
-	"\x96\x02\x00\x08\x04\x4E\x96\x02\x00\x08\x1B\x52\x17\x96\x03\x00"
-	"\x02\x08\x01\x1C\x96\x02\x00\x08\x2E\x4E\x96\x09\x00\x08\x2D\x07"
-	"\x03\x00\x00\x00\x08\x1C\x1C\x96\x02\x00\x08\x04\x4E\x96\x02\x00"
-	"\x08\x1B\x52\x17\x96\x03\x00\x02\x08\x01\x1C\x96\x02\x00\x08\x30"
-	"\x4E\x96\x09\x00\x08\x2F\x07\x03\x00\x00\x00\x08\x1C\x1C\x96\x02"
-	"\x00\x08\x04\x4E\x96\x02\x00\x08\x1B\x52\x17\x96\x02\x00\x08\x31"
-	"\x9B\x07\x00\x00\x01\x00\x73\x00\x27\x00\x96\x02\x00\x08\x32\x1C"
-	"\x12\x9D\x02\x00\x1B\x00\x96\x04\x00\x08\x33\x08\x32\x1C\x47\x96"
-	"\x07\x00\x07\x01\x00\x00\x00\x08\x01\x1C\x96\x02\x00\x08\x31\x52"
-	"\x17\x1D\x96\x02\x00\x08\x15\x9B\x07\x00\x00\x01\x00\x73\x00\x27"
-	"\x00\x96\x02\x00\x08\x32\x1C\x12\x9D\x02\x00\x1B\x00\x96\x04\x00"
-	"\x08\x34\x08\x32\x1C\x47\x96\x07\x00\x07\x01\x00\x00\x00\x08\x01"
-	"\x1C\x96\x02\x00\x08\x31\x52\x17\x1D\x00";
-# endif
-
-# ifdef SSL_RESP
-static unsigned char SSL_no[] =
-	"\x15"	// Alert 21
-	"\3\0"	// Version 3.0
-	"\0\2"	// length 2
-	"\2"	// fatal
-	"\x31";	// 0 close notify, 0x28 Handshake failure 40, 0x31 TLS access denied 49
-# endif
-#endif // TEXT_REPLY
-
-#ifdef NULLSERV_REPLIES
-# define DEFAULT_REPLY SEND_TXT
-	unsigned char *response = httpnulltext;
-	int rsize = sizeof httpnulltext - 1;
-#else
-# define DEFAULT_REPLY SEND_GIF
-	unsigned char *response = httpnullpixel;
-	int rsize = sizeof httpnullpixel - 1;
+  static unsigned char httpnull_swf[] =
+      "HTTP/1.1 200 OK\r\n"
+      "Content-type: application/x-shockwave-flash\r\n"
+      "Content-length: 1386\r\n"
+      "Connection: close\r\n"
+      "\r\n"
+      "\x88\x08\x02\x35\x00\x42\x75\x66\x66\x65\x72\x00\x4E\x61\x74\x69"
+      "\x76\x65\x00\x6C\x6F\x61\x64\x00\x42\x75\x66\x66\x65\x72\x5F\x6C"
+      "\x6F\x61\x64\x00\x70\x72\x6F\x74\x6F\x74\x79\x70\x65\x00\x64\x69"
+      "\x66\x66\x00\x42\x75\x66\x66\x65\x72\x5F\x64\x69\x66\x66\x00\x66"
+      "\x69\x6E\x64\x00\x42\x75\x66\x66\x65\x72\x5F\x66\x69\x6E\x64\x00"
+      "\x73\x75\x62\x00\x42\x75\x66\x66\x65\x72\x5F\x73\x75\x62\x00\x74"
+      "\x6F\x53\x74\x72\x69\x6E\x67\x00\x42\x75\x66\x66\x65\x72\x5F\x74"
+      "\x6F\x53\x74\x72\x69\x6E\x67\x00\x49\x6D\x61\x67\x65\x00\x63\x6F"
+      "\x6D\x70\x61\x72\x65\x00\x49\x6D\x61\x67\x65\x5F\x63\x6F\x6D\x70"
+      "\x61\x72\x65\x00\x73\x61\x76\x65\x00\x49\x6D\x61\x67\x65\x5F\x73"
+      "\x61\x76\x65\x00\x53\x6F\x63\x6B\x65\x74\x00\x63\x6C\x6F\x73\x65"
+      "\x00\x53\x6F\x63\x6B\x65\x74\x5F\x63\x6C\x6F\x73\x65\x00\x65\x72"
+      "\x72\x6F\x72\x00\x53\x6F\x63\x6B\x65\x74\x5F\x65\x72\x72\x6F\x72"
+      "\x00\x73\x65\x6E\x64\x00\x53\x6F\x63\x6B\x65\x74\x5F\x73\x65\x6E"
+      "\x64\x00\x63\x6C\x6F\x73\x65\x64\x00\x53\x6F\x63\x6B\x65\x74\x5F"
+      "\x67\x65\x74\x5F\x63\x6C\x6F\x73\x65\x64\x00\x61\x64\x64\x50\x72"
+      "\x6F\x70\x65\x72\x74\x79\x00\x54\x65\x73\x74\x00\x61\x64\x76\x61"
+      "\x6E\x63\x65\x00\x54\x65\x73\x74\x5F\x61\x64\x76\x61\x6E\x63\x65"
+      "\x00\x6D\x6F\x75\x73\x65\x5F\x6D\x6F\x76\x65\x00\x54\x65\x73\x74"
+      "\x5F\x6D\x6F\x75\x73\x65\x5F\x6D\x6F\x76\x65\x00\x6D\x6F\x75\x73"
+      "\x65\x5F\x70\x72\x65\x73\x73\x00\x54\x65\x73\x74\x5F\x6D\x6F\x75"
+      "\x73\x65\x5F\x70\x72\x65\x73\x73\x00\x6D\x6F\x75\x73\x65\x5F\x72"
+      "\x65\x6C\x65\x61\x73\x65\x00\x54\x65\x73\x74\x5F\x6D\x6F\x75\x73"
+      "\x65\x5F\x72\x65\x6C\x65\x61\x73\x65\x00\x72\x65\x6E\x64\x65\x72"
+      "\x00\x54\x65\x73\x74\x5F\x72\x65\x6E\x64\x65\x72\x00\x72\x65\x73"
+      "\x65\x74\x00\x54\x65\x73\x74\x5F\x72\x65\x73\x65\x74\x00\x72\x61"
+      "\x74\x65\x00\x54\x65\x73\x74\x5F\x67\x65\x74\x5F\x72\x61\x74\x65"
+      "\x00\x71\x75\x69\x74\x00\x54\x65\x73\x74\x5F\x67\x65\x74\x5F\x71"
+      "\x75\x69\x74\x00\x74\x72\x61\x63\x65\x00\x54\x65\x73\x74\x5F\x67"
+      "\x65\x74\x5F\x74\x72\x61\x63\x65\x00\x6C\x61\x75\x6E\x63\x68\x65"
+      "\x64\x00\x54\x65\x73\x74\x5F\x67\x65\x74\x5F\x6C\x61\x75\x6E\x63"
+      "\x68\x65\x64\x00\x70\x72\x69\x6E\x74\x00\x73\x00\x49\x4E\x46\x4F"
+      "\x3A\x20\x00\x45\x52\x52\x4F\x52\x3A\x20\x00\x96\x04\x00\x08\x00"
+      "\x08\x01\x1C\x96\x02\x00\x08\x00\x4E\x1D\x96\x02\x00\x08\x00\x1C"
+      "\x96\x04\x00\x08\x02\x08\x01\x1C\x96\x02\x00\x08\x03\x4E\x4F\x96"
+      "\x02\x00\x08\x00\x1C\x96\x07\x00\x08\x04\x07\x00\x00\x00\x00\x43"
+      "\x4F\x96\x02\x00\x08\x00\x1C\x96\x02\x00\x08\x04\x4E\x96\x04\x00"
+      "\x08\x05\x08\x01\x1C\x96\x02\x00\x08\x06\x4E\x4F\x96\x02\x00\x08"
+      "\x00\x1C\x96\x02\x00\x08\x04\x4E\x96\x04\x00\x08\x07\x08\x01\x1C"
+      "\x96\x02\x00\x08\x08\x4E\x4F\x96\x02\x00\x08\x00\x1C\x96\x02\x00"
+      "\x08\x04\x4E\x96\x04\x00\x08\x09\x08\x01\x1C\x96\x02\x00\x08\x0A"
+      "\x4E\x4F\x96\x02\x00\x08\x00\x1C\x96\x02\x00\x08\x04\x4E\x96\x04"
+      "\x00\x08\x0B\x08\x01\x1C\x96\x02\x00\x08\x0C\x4E\x4F\x96\x04\x00"
+      "\x08\x0D\x08\x01\x1C\x96\x02\x00\x08\x0D\x4E\x1D\x96\x02\x00\x08"
+      "\x0D\x1C\x96\x07\x00\x08\x04\x07\x00\x00\x00\x00\x43\x4F\x96\x02"
+      "\x00\x08\x0D\x1C\x96\x02\x00\x08\x04\x4E\x96\x04\x00\x08\x0E\x08"
+      "\x01\x1C\x96\x02\x00\x08\x0F\x4E\x4F\x96\x02\x00\x08\x0D\x1C\x96"
+      "\x02\x00\x08\x04\x4E\x96\x04\x00\x08\x10\x08\x01\x1C\x96\x02\x00"
+      "\x08\x11\x4E\x4F\x96\x02\x00\x08\x12\x9B\x05\x00\x00\x00\x00\x00"
+      "\x00\x1D\x96\x02\x00\x08\x12\x1C\x96\x07\x00\x08\x04\x07\x00\x00"
+      "\x00\x00\x43\x4F\x96\x02\x00\x08\x12\x1C\x96\x02\x00\x08\x04\x4E"
+      "\x96\x04\x00\x08\x13\x08\x01\x1C\x96\x02\x00\x08\x14\x4E\x4F\x96"
+      "\x02\x00\x08\x12\x1C\x96\x02\x00\x08\x04\x4E\x96\x04\x00\x08\x15"
+      "\x08\x01\x1C\x96\x02\x00\x08\x16\x4E\x4F\x96\x02\x00\x08\x12\x1C"
+      "\x96\x02\x00\x08\x04\x4E\x96\x04\x00\x08\x17\x08\x01\x1C\x96\x02"
+      "\x00\x08\x18\x4E\x4F\x96\x03\x00\x02\x08\x01\x1C\x96\x02\x00\x08"
+      "\x1A\x4E\x96\x09\x00\x08\x19\x07\x03\x00\x00\x00\x08\x12\x1C\x96"
+      "\x02\x00\x08\x04\x4E\x96\x02\x00\x08\x1B\x52\x17\x96\x04\x00\x08"
+      "\x1C\x08\x01\x1C\x96\x02\x00\x08\x1C\x4E\x1D\x96\x02\x00\x08\x1C"
+      "\x1C\x96\x07\x00\x08\x04\x07\x00\x00\x00\x00\x43\x4F\x96\x02\x00"
+      "\x08\x1C\x1C\x96\x02\x00\x08\x04\x4E\x96\x04\x00\x08\x1D\x08\x01"
+      "\x1C\x96\x02\x00\x08\x1E\x4E\x4F\x96\x02\x00\x08\x1C\x1C\x96\x02"
+      "\x00\x08\x04\x4E\x96\x04\x00\x08\x1F\x08\x01\x1C\x96\x02\x00\x08"
+      "\x20\x4E\x4F\x96\x02\x00\x08\x1C\x1C\x96\x02\x00\x08\x04\x4E\x96"
+      "\x04\x00\x08\x21\x08\x01\x1C\x96\x02\x00\x08\x22\x4E\x4F\x96\x02"
+      "\x00\x08\x1C\x1C\x96\x02\x00\x08\x04\x4E\x96\x04\x00\x08\x23\x08"
+      "\x01\x1C\x96\x02\x00\x08\x24\x4E\x4F\x96\x02\x00\x08\x1C\x1C\x96"
+      "\x02\x00\x08\x04\x4E\x96\x04\x00\x08\x25\x08\x01\x1C\x96\x02\x00"
+      "\x08\x26\x4E\x4F\x96\x02\x00\x08\x1C\x1C\x96\x02\x00\x08\x04\x4E"
+      "\x96\x04\x00\x08\x27\x08\x01\x1C\x96\x02\x00\x08\x28\x4E\x4F\x96"
+      "\x03\x00\x02\x08\x01\x1C\x96\x02\x00\x08\x2A\x4E\x96\x09\x00\x08"
+      "\x29\x07\x03\x00\x00\x00\x08\x1C\x1C\x96\x02\x00\x08\x04\x4E\x96"
+      "\x02\x00\x08\x1B\x52\x17\x96\x03\x00\x02\x08\x01\x1C\x96\x02\x00"
+      "\x08\x2C\x4E\x96\x09\x00\x08\x2B\x07\x03\x00\x00\x00\x08\x1C\x1C"
+      "\x96\x02\x00\x08\x04\x4E\x96\x02\x00\x08\x1B\x52\x17\x96\x03\x00"
+      "\x02\x08\x01\x1C\x96\x02\x00\x08\x2E\x4E\x96\x09\x00\x08\x2D\x07"
+      "\x03\x00\x00\x00\x08\x1C\x1C\x96\x02\x00\x08\x04\x4E\x96\x02\x00"
+      "\x08\x1B\x52\x17\x96\x03\x00\x02\x08\x01\x1C\x96\x02\x00\x08\x30"
+      "\x4E\x96\x09\x00\x08\x2F\x07\x03\x00\x00\x00\x08\x1C\x1C\x96\x02"
+      "\x00\x08\x04\x4E\x96\x02\x00\x08\x1B\x52\x17\x96\x02\x00\x08\x31"
+      "\x9B\x07\x00\x00\x01\x00\x73\x00\x27\x00\x96\x02\x00\x08\x32\x1C"
+      "\x12\x9D\x02\x00\x1B\x00\x96\x04\x00\x08\x33\x08\x32\x1C\x47\x96"
+      "\x07\x00\x07\x01\x00\x00\x00\x08\x01\x1C\x96\x02\x00\x08\x31\x52"
+      "\x17\x1D\x96\x02\x00\x08\x15\x9B\x07\x00\x00\x01\x00\x73\x00\x27"
+      "\x00\x96\x02\x00\x08\x32\x1C\x12\x9D\x02\x00\x1B\x00\x96\x04\x00"
+      "\x08\x34\x08\x32\x1C\x47\x96\x07\x00\x07\x01\x00\x00\x00\x08\x01"
+      "\x1C\x96\x02\x00\x08\x31\x52\x17\x1D\x00";
 #endif
 
-	struct addrinfo hints, *servinfo;
-	int error = 0;
+#ifdef SSL_RESP
+  static unsigned char SSL_no[] = "\x15"        // Alert 21
+      "\3\0"                    // Version 3.0
+      "\0\2"                    // length 2
+      "\2"                      // fatal
+      "\x31";                   // 0 close notify, 0x28 Handshake failure 40, 0x31 TLS access denied 49
+#endif
+#endif                          // TEXT_REPLY
 
-	fd_set set;
-	struct timeval timeout;
-	int select_rv;
-	int status = EXIT_FAILURE; /* default return from child */
+#ifdef NULLSERV_REPLIES
+#define DEFAULT_REPLY SEND_TXT
+  unsigned char *response = httpnulltext;
+  int rsize = sizeof httpnulltext - 1;
+#else
+#define DEFAULT_REPLY SEND_GIF
+  unsigned char *response = httpnullpixel;
+  int rsize = sizeof httpnullpixel - 1;
+#endif
 
-	/* command line arguments processing */
-	for (i = 1; i < argc; i++)
-	{
-		if (argv[i][0] == '-') {
-			if ( (i + 1) < argc ) {
-				switch (argv[i][1])
-				{
+  struct addrinfo hints, *servinfo;
+  int error = 0;
+
+  fd_set set;
+  struct timeval timeout;
+  int select_rv;
+  int status = EXIT_FAILURE;    /* default return from child */
+
+  /* command line arguments processing */
+  for (i = 1; i < argc; i++) {
+    if (argv[i][0] == '-') {
+      if ((i + 1) < argc) {
+        switch (argv[i][1]) {
 #ifdef IF_MODE
-				case 'n' :
-					strncpy(ifname, argv[++i], IFNAMSIZ);
-					ifname[IFNAMSIZ - 1] = '\0';
-					break;
+        case 'n':
+          strncpy(ifname, argv[++i], IFNAMSIZ);
+          ifname[IFNAMSIZ - 1] = '\0';
+          break;
 #endif
 #ifdef PORT_MODE
-				case 'p' :
-					strncpy(port, argv[++i], sizeof port);
-					port[sizeof port - 1] = '\0';
-					break;
+        case 'p':
+          strncpy(port, argv[++i], sizeof port);
+          port[sizeof port - 1] = '\0';
+          break;
 #endif
 #ifdef DROP_ROOT
-				case 'u' :
-					strncpy(user, argv[++i], sizeof user);
-					user[sizeof user - 1] = '\0';
-					break;
+        case 'u':
+          strncpy(user, argv[++i], sizeof user);
+          user[sizeof user - 1] = '\0';
+          break;
 #endif
 #ifdef READ_FILE
-# ifdef READ_GIF
-				case 'g' :
-					do_gif = 1;	// and fall through
-# endif
-				case 'f' :
-					fname = argv[++i];
-					break;
-#endif	// READ_FILE
-				default :
-					error = 1;
-				}
-			} else {
-				error = 1;
-			}
-		} else if (use_ip == 0) {	// assume its a listening IP address
-			strncpy(ip_addr, argv[i], INET_ADDRSTRLEN);
-			ip_addr[INET_ADDRSTRLEN - 1] = '\0';
-			use_ip = 1;
-		} else {
-			error = 1;	// fix bug with 2 IP like args
-		}
-	}
+#ifdef READ_GIF
+        case 'g':
+          do_gif = 1;           // and fall through
+#endif
+        case 'f':
+          fname = argv[++i];
+          break;
+#endif                          // READ_FILE
+        default:
+          error = 1;
+        }
+      } else {
+        error = 1;
+      }
+    } else if (use_ip == 0) {   // assume its a listening IP address
+      strncpy(ip_addr, argv[i], INET_ADDRSTRLEN);
+      ip_addr[INET_ADDRSTRLEN - 1] = '\0';
+      use_ip = 1;
+    } else {
+      error = 1;                // fix bug with 2 IP like args
+    }
+  }
 
-	if (error) {
+  if (error) {
 #ifndef TINY
-		printf ("Usage:%s"
-		" [IP No/hostname (all)]"
-# ifdef PORT_MODE
-		" [-p port (80)]"
-# endif
-# ifdef IF_MODE
-		" [-n i/f (all)]"
-# endif
-# ifdef DROP_ROOT
-		" [-u user (\"nobody\")]"
-# endif
-# ifdef READ_FILE
-		" [-f response.bin]"
-#  ifdef READ_GIF
-		" [-g name.gif]"
-#  endif
-# endif	// READ_FILE
-		"\n", argv[0]);
-#endif	// TINY
-		exit(EXIT_FAILURE);
-	}
+    printf("Usage:%s" " [IP No/hostname (all)]"
+#ifdef PORT_MODE
+           " [-p port (80)]"
+#endif
+#ifdef IF_MODE
+           " [-n i/f (all)]"
+#endif
+#ifdef DROP_ROOT
+           " [-u user (\"nobody\")]"
+#endif
+#ifdef READ_FILE
+           " [-f response.bin]"
+#ifdef READ_GIF
+           " [-g name.gif]"
+#endif
+#endif                          // READ_FILE
+           "\n", argv[0]);
+#endif                          // TINY
+    exit(EXIT_FAILURE);
+  }
 
-	openlog("pixelserv", LOG_PID | LOG_CONS | LOG_PERROR, LOG_DAEMON);
-	syslog( LOG_INFO, "%s %s compiled: %s from %s", argv[0], VERSION, __DATE__ " " __TIME__ , __FILE__ );
+  openlog("pixelserv", LOG_PID | LOG_CONS | LOG_PERROR, LOG_DAEMON);
+  syslog(LOG_INFO, "%s %s compiled: %s from %s", argv[0], VERSION,
+         __DATE__ " " __TIME__, __FILE__);
 
 #ifdef READ_FILE
-	if (fname)
-	{
-		if ( stat(fname, &file_stat) < 0 ) {
-			syslog(LOG_ERR, "stat: '%s': %m", fname);
-			exit(EXIT_FAILURE);
-		}
+  if (fname) {
+    if (stat(fname, &file_stat) < 0) {
+      syslog(LOG_ERR, "stat: '%s': %m", fname);
+      exit(EXIT_FAILURE);
+    }
 
-		fsize = (int) file_stat.st_size;
-		TESTPRINT("fsize:%d\n", fsize);
+    fsize = (int)file_stat.st_size;
+    TESTPRINT("fsize:%d\n", fsize);
 
-		if (fsize < 43)
-		{
-			syslog(LOG_ERR, "%s: size only %d", fname, fsize);
-			exit(EXIT_FAILURE);
-		}
+    if (fsize < 43) {
+      syslog(LOG_ERR, "%s: size only %d", fname, fsize);
+      exit(EXIT_FAILURE);
+    }
 
-		if ( (fp = fopen (fname, "rb")) == NULL ) {
-			syslog(LOG_ERR, "fopen: '%s': %m", fname);
-			exit(EXIT_FAILURE);
-		}
+    if ((fp = fopen(fname, "rb")) == NULL) {
+      syslog(LOG_ERR, "fopen: '%s': %m", fname);
+      exit(EXIT_FAILURE);
+    }
+#ifdef READ_GIF
+    if (do_gif) {
+      snprintf(buf, CHAR_BUF_SIZE,
+               "HTTP/1.1 200 OK\r\n"
+               "Content-type: image/gif\r\n"
+               "Content-length: %d\r\n" "Connection: close\r\n" "\r\n", fsize);
 
-# ifdef READ_GIF
-		if (do_gif) {
-			snprintf(buf, CHAR_BUF_SIZE,
-				"HTTP/1.1 200 OK\r\n"
-				"Content-type: image/gif\r\n"
-				"Content-length: %d\r\n"
-				"Connection: close\r\n"
-				"\r\n", fsize);
+      hsize = strlen(buf);
+      TESTPRINT("hsize:%d\n", hsize);
+    }
+#endif
 
-			hsize = strlen(buf);
-			TESTPRINT("hsize:%d\n", hsize);
-		}
-# endif
+    rsize = hsize + fsize;
+    TESTPRINT("rsize:%d\n", rsize);
+    if ((response = malloc(rsize)) == NULL) {
+      syslog(LOG_ERR, "malloc: %m");
+      exit(EXIT_FAILURE);
+    }
+#ifdef READ_GIF
+    if (do_gif) {
+      strcpy((char *)response, buf);
+    }
+#endif
 
-		rsize = hsize + fsize;
-		TESTPRINT("rsize:%d\n", rsize);
-		if ( (response = malloc(rsize)) == NULL )
-		{
-			syslog(LOG_ERR, "malloc: %m");
-			exit(EXIT_FAILURE);
-		}
+    if (fread(&response[hsize], sizeof(char), fsize, fp) < fsize) {
+      syslog(LOG_ERR, "fread: '%s': %m", fname);
+      exit(EXIT_FAILURE);
+    }
 
-# ifdef READ_GIF
-		if (do_gif) {
-			strcpy((char *) response, buf);
-		}
-# endif
-
-		if ( fread(&response[hsize], sizeof(char), fsize, fp) < fsize )
-		{
-			syslog(LOG_ERR, "fread: '%s': %m", fname);
-			exit(EXIT_FAILURE);
-		}
-
-		fclose(fp);
-		}
-# ifdef SAVE_RESP
-	fp = fopen("test.tmp", "wb");
-	fwrite(response, sizeof(char), rsize, fp);
-	fclose(fp);
-# endif
-#endif // READ_FILE
+    fclose(fp);
+  }
+#ifdef SAVE_RESP
+  fp = fopen("test.tmp", "wb");
+  fwrite(response, sizeof(char), rsize, fp);
+  fclose(fp);
+#endif
+#endif                          // READ_FILE
 
 #ifndef TEST
-	if ( daemon(0, 0) != OK ) {
-		syslog(LOG_ERR, "failed to daemonize, exit: %m");
-		exit(EXIT_FAILURE);
-	}
+  if (daemon(0, 0) != OK) {
+    syslog(LOG_ERR, "failed to daemonize, exit: %m");
+    exit(EXIT_FAILURE);
+  }
 #endif
 
-	memset(&hints, 0, sizeof hints);
-	hints.ai_family = AF_INET;	// AF_UNSPEC - AF_INET restricts to IPV4
-	hints.ai_socktype = SOCK_STREAM;
-	if (use_ip == 0) {
-		hints.ai_flags = AI_PASSIVE;	// use my IP
-	}
+  memset(&hints, 0, sizeof hints);
+  hints.ai_family = AF_INET;    // AF_UNSPEC - AF_INET restricts to IPV4
+  hints.ai_socktype = SOCK_STREAM;
+  if (use_ip == 0) {
+    hints.ai_flags = AI_PASSIVE;        // use my IP
+  }
 
-	rv = getaddrinfo(use_ip ? ip_addr : NULL, port, &hints, &servinfo);
-	if (rv != OK) {
-		syslog( LOG_ERR, "getaddrinfo: %s", gai_strerror (rv) );
-		exit(EXIT_FAILURE);
-	}
+  rv = getaddrinfo(use_ip ? ip_addr : NULL, port, &hints, &servinfo);
+  if (rv != OK) {
+    syslog(LOG_ERR, "getaddrinfo: %s", gai_strerror(rv));
+    exit(EXIT_FAILURE);
+  }
 
-	if ( (( sockfd = socket(servinfo->ai_family, servinfo->ai_socktype, servinfo->ai_protocol) ) < 1)
-		|| ( setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(int)) != OK )
+  if (((sockfd =
+        socket(servinfo->ai_family, servinfo->ai_socktype,
+               servinfo->ai_protocol)) < 1)
+      || (setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(int)) != OK)
 #ifdef IF_MODE
-		|| ( setsockopt(sockfd, SOL_SOCKET, SO_BINDTODEVICE, ifname, IFNAMSIZ)	!= OK )	/* only use selected i/f */
+      /* only use selected i/f */
+      || (setsockopt(sockfd, SOL_SOCKET, SO_BINDTODEVICE, ifname, IFNAMSIZ) != OK)
 #endif
-		|| ( setsockopt(sockfd, SOL_TCP, TCP_NODELAY, &yes, sizeof(int)) != OK )		/* send short packets straight away */
-		|| ( setsockopt(sockfd, SOL_TCP, TCP_LINGER2, (void *) &n, sizeof n) != OK )	/* try to prevent hanging processes in FIN_WAIT2 */
-		|| ( bind(sockfd, servinfo->ai_addr, servinfo->ai_addrlen) != OK )
-		|| ( listen(sockfd, BACKLOG) != OK ) ) {
-		syslog(LOG_ERR, "Abort: %m");
-		exit(EXIT_FAILURE);
-	}
+      /* send short packets straight away */
+      || (setsockopt(sockfd, SOL_TCP, TCP_NODELAY, &yes, sizeof(int)) != OK)
+      /* try to prevent hanging processes in FIN_WAIT2 */
+      || (setsockopt(sockfd, SOL_TCP, TCP_LINGER2, (void *)&n, sizeof n) != OK)
+      || (bind(sockfd, servinfo->ai_addr, servinfo->ai_addrlen) != OK)
+      || (listen(sockfd, BACKLOG) != OK)) {
+    syslog(LOG_ERR, "Abort: %m");
+    exit(EXIT_FAILURE);
+  }
 
-	freeaddrinfo(servinfo); /* all done with this structure */
+  freeaddrinfo(servinfo);       /* all done with this structure */
 
-	{
-		struct sigaction sa;
-		sa.sa_handler = signal_handler;
-		sigemptyset(&sa.sa_mask);
+  {
+    struct sigaction sa;
+    sa.sa_handler = signal_handler;
+    sigemptyset(&sa.sa_mask);
 
 #ifndef TINY
-		/* set signal handler for termination */
-		if ( sigaction(SIGTERM, &sa, NULL) != OK ) {
-			syslog(LOG_ERR, "SIGTERM %m");
-			exit(EXIT_FAILURE);
-		}
+    /* set signal handler for termination */
+    if (sigaction(SIGTERM, &sa, NULL) != OK) {
+      syslog(LOG_ERR, "SIGTERM %m");
+      exit(EXIT_FAILURE);
+    }
 #endif
-		/* reap all dead processes */
-		sa.sa_flags = SA_RESTART;
-		if ( sigaction(SIGCHLD, &sa, NULL) != OK ) {
-			syslog(LOG_ERR, "SIGCHLD %m");
-			exit(EXIT_FAILURE);
-		}
+    /* reap all dead processes */
+    sa.sa_flags = SA_RESTART;
+    if (sigaction(SIGCHLD, &sa, NULL) != OK) {
+      syslog(LOG_ERR, "SIGCHLD %m");
+      exit(EXIT_FAILURE);
+    }
 #ifdef DO_COUNT
-		/* set signal handler for info */
-		if ( sigaction(SIGUSR1, &sa, NULL) != OK ) {
-			syslog(LOG_ERR, "SIGUSR1 %m");
-			exit(EXIT_FAILURE);
-		}
+    /* set signal handler for info */
+    if (sigaction(SIGUSR1, &sa, NULL) != OK) {
+      syslog(LOG_ERR, "SIGUSR1 %m");
+      exit(EXIT_FAILURE);
+    }
 #endif
-	}
+  }
 
 #ifdef DROP_ROOT
-	if ( (pw = getpwnam(user)) == NULL ) {
-		syslog(LOG_ERR, "Unknown user \"%s\"", user);
-		exit(EXIT_FAILURE);
-	}
+  if ((pw = getpwnam(user)) == NULL) {
+    syslog(LOG_ERR, "Unknown user \"%s\"", user);
+    exit(EXIT_FAILURE);
+  }
 
-	if ( setuid(pw->pw_uid) ) {
-		syslog( LOG_ERR, "setuid %d: %s\n", pw->pw_uid, strerror(errno) );
-		exit(EXIT_FAILURE);
-	}
+  if (setuid(pw->pw_uid)) {
+    syslog(LOG_ERR, "setuid %d: %s\n", pw->pw_uid, strerror(errno));
+    exit(EXIT_FAILURE);
+  }
 #endif
 
 #ifdef IF_MODE
-	syslog(LOG_NOTICE, "Listening on %s %s:%s", ifname, ip_addr, port);
+  syslog(LOG_NOTICE, "Listening on %s %s:%s", ifname, ip_addr, port);
 #else
-	syslog(LOG_NOTICE, "Listening on %s:%s", ip_addr, port);
+  syslog(LOG_NOTICE, "Listening on %s:%s", ip_addr, port);
 #endif
 
-	while(1) {	/* main accept() loop */
-		sin_size = sizeof their_addr;
-		new_fd = accept(sockfd, (struct sockaddr *) &their_addr, &sin_size);
-		if (new_fd < 1) {
-			MYLOG(LOG_WARNING, "accept: %m");
-			continue;
-		}
-
+  while (1) {                   /* main accept() loop */
+    sin_size = sizeof their_addr;
+    new_fd = accept(sockfd, (struct sockaddr *)&their_addr, &sin_size);
+    if (new_fd < 1) {
+      MYLOG(LOG_WARNING, "accept: %m");
+      continue;
+    }
 #ifdef DO_COUNT
-		count++;
+    count++;
 #endif
 
-		if ( fork() == 0 ) {
-			/* this is the child process */
-			close (sockfd); /* child doesn't need the listener */
+    if (fork() == 0) {
+      /* this is the child process */
+      close(sockfd);            /* child doesn't need the listener */
 #ifndef TINY
-			signal(SIGTERM, SIG_DFL);
+      signal(SIGTERM, SIG_DFL);
 #endif
-			signal(SIGCHLD, SIG_DFL);
+      signal(SIGCHLD, SIG_DFL);
 #ifdef DO_COUNT
-			signal(SIGUSR1, SIG_IGN);
+      signal(SIGUSR1, SIG_IGN);
 #endif
 
 #ifdef TEST
-			inet_ntop(their_addr.ss_family, get_in_addr( (struct sockaddr *) &their_addr ), s, sizeof s);
-			printf("server: got connection from %s\n", s);
+      inet_ntop(their_addr.ss_family,
+                get_in_addr((struct sockaddr *)&their_addr), s, sizeof s);
+      printf("server: got connection from %s\n", s);
 #endif
 
 #ifdef TEXT_REPLY
-			/* read a line from the request */
-			FD_ZERO(&set);
-			FD_SET(new_fd, &set);
-			/* Initialize the timeout data structure */
-			timeout.tv_sec = 2;
-			timeout.tv_usec = 0;
+      /* read a line from the request */
+      FD_ZERO(&set);
+      FD_SET(new_fd, &set);
+      /* Initialize the timeout data structure */
+      timeout.tv_sec = 2;
+      timeout.tv_usec = 0;
 
-			/* select returns 0 if timeout, 1 if input available, -1 if error */
-			select_rv = select(new_fd + 1, &set, NULL, NULL, &timeout);
-			if (select_rv < 0) {
-				MYLOG(LOG_ERR, "select: %m");
-			} else if (select_rv == 0) {
-				MYLOG(LOG_ERR, "timeout on select");
-			} else {
-				rv = recv(new_fd, buf, CHAR_BUF_SIZE, 0);
-				if (rv < 0) {
-					MYLOG(LOG_ERR, "recv: %m");
-				} else if (rv == 0) {
-					MYLOG(LOG_ERR, "recv: No data");
-				} else {
-					buf[rv] = '\0';
-					TESTPRINT("\nreceived %d bytes\n'%s'\n", rv, buf);
-# ifdef HEX_DUMP
-					hex_dump(buf, rv);
-# endif
-# ifdef SSL_RESP
-					if (buf[0] == '\x16'){
-						TESTPRINT("SSL handshake request received\n");
-						status = SEND_SSL;
-						response = SSL_no;
-						rsize = sizeof SSL_no - 1;
-					} else {
-# endif
-					char *method = strtok(buf, " ");
-					if (method == NULL) {
-						MYLOG(LOG_ERR, "null method");
-					} else {
-						TESTPRINT("method: '%s'\n", method);
-						if ( strcasecmp(method, "GET") ) {
-							MYLOG(LOG_ERR, "unknown method: %s", method);
-							status = SEND_BAD;
-							TESTPRINT("Sending 501 response\n");
-							response = http501;
-							rsize = sizeof http501 - 1;
-						} else {
-							status = DEFAULT_REPLY;	// send default from here
-							/* trim up to non path chars */
-							char *path = strtok(NULL, " ?#;=");	// "?;#:*<>[]='\"\\,|!~()"
-							if (path == NULL) {
-								MYLOG(LOG_ERR, "null path");
-							} else {
-								TESTPRINT("path: '%s'\n",path);
-								char *file = strrchr(path, '/');
-								if (file == NULL) {
-									MYLOG(LOG_ERR, "invalid file path %s", path);
-								} else {
-									TESTPRINT("file: '%s'\n", file);
-									char *ext = strrchr(file, '.');
-									if (ext == NULL) {
-										MYLOG(LOG_ERR, "No file extension %s", file);
-									} else {
-										TESTPRINT("ext: '%s'\n", ext);
-# ifdef NULLSERV_REPLIES
-										if ( !strcasecmp(ext, ".gif") ) {
-											TESTPRINT("Sending gif response\n");
-											status = SEND_GIF;
-											response = httpnullpixel;
-											rsize = sizeof httpnullpixel - 1;
-										} else if (!strcasecmp(ext, ".png") ) {
-											TESTPRINT("Sending png response\n");
-											status = SEND_PNG;
-											response = httpnull_png;
-											rsize = sizeof httpnull_png - 1;
-										} else if (!strncasecmp(ext, ".jp", 3) ) {
-											TESTPRINT("Sending jpg response\n");
-											status = SEND_JPG;
-											response = httpnull_jpg;
-											rsize = sizeof httpnull_jpg - 1;
-										} else if (!strcasecmp(ext, ".swf") ) {
-											TESTPRINT("Sending swf response\n");
-											status = SEND_SWF;
-											response = httpnull_swf;
-											rsize = sizeof httpnull_swf - 1;
-										}
-# else
-										if ( !strncasecmp(ext, ".js", 3) ) {	/* .jsx ?*/
-											status = SEND_TXT;
-											TESTPRINT("Sending Txt response\n");
-											response = httpnulltext;
-											rsize = sizeof httpnulltext - 1;
-										}
-# endif
-										/* add other response types here */
-									}
-								}
-							}
-						}
-# ifdef SSL_RESP
-						}
-# endif
-					}
-				}
-			}
-
-			if (status != EXIT_FAILURE) {
-#else	// TEXT_REPLY
-			{
-				status = SEND_GIF;
-				TESTPRINT("Sending a gif response\n");
+      /* select returns 0 if timeout, 1 if input available, -1 if error */
+      select_rv = select(new_fd + 1, &set, NULL, NULL, &timeout);
+      if (select_rv < 0) {
+        MYLOG(LOG_ERR, "select: %m");
+      } else if (select_rv == 0) {
+        MYLOG(LOG_ERR, "timeout on select");
+      } else {
+        rv = recv(new_fd, buf, CHAR_BUF_SIZE, 0);
+        if (rv < 0) {
+          MYLOG(LOG_ERR, "recv: %m");
+        } else if (rv == 0) {
+          MYLOG(LOG_ERR, "recv: No data");
+        } else {
+          buf[rv] = '\0';
+          TESTPRINT("\nreceived %d bytes\n'%s'\n", rv, buf);
+#ifdef HEX_DUMP
+          hex_dump(buf, rv);
 #endif
-				rv = send(new_fd, response, rsize, 0);
+#ifdef SSL_RESP
+          if (buf[0] == '\x16') {
+            TESTPRINT("SSL handshake request received\n");
+            status = SEND_SSL;
+            response = SSL_no;
+            rsize = sizeof SSL_no - 1;
+          } else {
+#endif
+            char *method = strtok(buf, " ");
+            if (method == NULL) {
+              MYLOG(LOG_ERR, "null method");
+            } else {
+              TESTPRINT("method: '%s'\n", method);
+              if (strcasecmp(method, "GET")) {
+                MYLOG(LOG_ERR, "unknown method: %s", method);
+                status = SEND_BAD;
+                TESTPRINT("Sending 501 response\n");
+                response = http501;
+                rsize = sizeof http501 - 1;
+              } else {
+                status = DEFAULT_REPLY; // send default from here
+                /* trim up to non path chars */
+                char *path = strtok(NULL, " ?#;=");     // "?;#:*<>[]='\"\\,|!~()"
+                if (path == NULL) {
+                  MYLOG(LOG_ERR, "null path");
+                } else {
+                  TESTPRINT("path: '%s'\n", path);
+                  char *file = strrchr(path, '/');
+                  if (file == NULL) {
+                    MYLOG(LOG_ERR, "invalid file path %s", path);
+                  } else {
+                    TESTPRINT("file: '%s'\n", file);
+                    char *ext = strrchr(file, '.');
+                    if (ext == NULL) {
+                      MYLOG(LOG_ERR, "No file extension %s", file);
+                    } else {
+                      TESTPRINT("ext: '%s'\n", ext);
+#ifdef NULLSERV_REPLIES
+                      if (!strcasecmp(ext, ".gif")) {
+                        TESTPRINT("Sending gif response\n");
+                        status = SEND_GIF;
+                        response = httpnullpixel;
+                        rsize = sizeof httpnullpixel - 1;
+                      } else if (!strcasecmp(ext, ".png")) {
+                        TESTPRINT("Sending png response\n");
+                        status = SEND_PNG;
+                        response = httpnull_png;
+                        rsize = sizeof httpnull_png - 1;
+                      } else if (!strncasecmp(ext, ".jp", 3)) {
+                        TESTPRINT("Sending jpg response\n");
+                        status = SEND_JPG;
+                        response = httpnull_jpg;
+                        rsize = sizeof httpnull_jpg - 1;
+                      } else if (!strcasecmp(ext, ".swf")) {
+                        TESTPRINT("Sending swf response\n");
+                        status = SEND_SWF;
+                        response = httpnull_swf;
+                        rsize = sizeof httpnull_swf - 1;
+                      }
+#else
+                      if (!strncasecmp(ext, ".js", 3)) {        /* .jsx ? */
+                        status = SEND_TXT;
+                        TESTPRINT("Sending Txt response\n");
+                        response = httpnulltext;
+                        rsize = sizeof httpnulltext - 1;
+                      }
+#endif
+                      /* add other response types here */
+                    }
+                  }
+                }
+              }
+#ifdef SSL_RESP
+            }
+#endif
+          }
+        }
+      }
 
-				/* check for error message, but don't bother checking that all bytes sent */
-				if (rv < 0) {
-					MYLOG(LOG_WARNING, "send: %m");
-					status = EXIT_FAILURE;
-				}
-			}
+      if (status != EXIT_FAILURE) {
+#else                           // TEXT_REPLY
+      {
+        status = SEND_GIF;
+        TESTPRINT("Sending a gif response\n");
+#endif
+        rv = send(new_fd, response, rsize, 0);
 
-			/* clean way to flush read buffers and close connection */
-			if (shutdown(new_fd, SHUT_WR) == OK) {
-				do {
-					/* Initialize the file descriptor set */
-					FD_ZERO(&set);
-					FD_SET(new_fd, &set);
-					/* Initialize the timeout data structure */
-					timeout.tv_sec = 2;
-					timeout.tv_usec = 0;
-					/* select returns 0 if timeout, 1 if input available, -1 if error */
-					select_rv = select(new_fd + 1, &set, NULL, NULL, &timeout);
-				} while ( (select_rv > 0) && ( recv(new_fd, buf, CHAR_BUF_SIZE, 0) > 0 ) );
-			}
+        /* check for error message, but don't bother checking that all bytes sent */
+        if (rv < 0) {
+          MYLOG(LOG_WARNING, "send: %m");
+          status = EXIT_FAILURE;
+        }
+      }
 
-			shutdown(new_fd, SHUT_RD);
-			close(new_fd);
-			exit(status);
-		}
+      /* clean way to flush read buffers and close connection */
+      if (shutdown(new_fd, SHUT_WR) == OK) {
+        do {
+          /* Initialize the file descriptor set */
+          FD_ZERO(&set);
+          FD_SET(new_fd, &set);
+          /* Initialize the timeout data structure */
+          timeout.tv_sec = 2;
+          timeout.tv_usec = 0;
+          /* select returns 0 if timeout, 1 if input available, -1 if error */
+          select_rv = select(new_fd + 1, &set, NULL, NULL, &timeout);
+        } while ((select_rv > 0) && (recv(new_fd, buf, CHAR_BUF_SIZE, 0) > 0));
+      }
 
-		close(new_fd);	// parent doesn't need this
-	}
+      shutdown(new_fd, SHUT_RD);
+      close(new_fd);
+      exit(status);
+    }
 
-	return (EXIT_SUCCESS);
+    close(new_fd);              // parent doesn't need this
+  }
+
+  return (EXIT_SUCCESS);
 }
 
 /*
@@ -905,4 +891,3 @@ V30	tidy up
 V31 development - add nullserv responses from https://github.com/flexiondotorg/nullserv 30/05/13
 V32 Add candidate SSL response
 */
-
