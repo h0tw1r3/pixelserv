@@ -30,9 +30,9 @@
 #include <syslog.h>
 #include <net/if.h>             // for IFNAMSIZ
 #include <pwd.h>                // for getpwnam
+#include <ctype.h>
 
 #ifdef HEX_DUMP
-#include <ctype.h>
 /* from http://sws.dett.de/mini/hexdump-c/ */
 static void hex_dump(void *data, int size)
 {
@@ -89,6 +89,38 @@ static void hex_dump(void *data, int size)
 }
 #endif
 
+/* http://stackoverflow.com/questions/2673207/c-c-url-decode-library */
+void urldecode(char *decoded, const char *encoded)
+{
+    char d1;
+    char d2;
+    while (*encoded) {
+        if ((*encoded == '%') &&
+                ((d1 = encoded[1]) && (d2 = encoded[2])) &&
+                (isxdigit(d1) && isxdigit(d2))) {
+            if (d1 >= 'a')
+                d1 -= 'A'-'a';
+            if (d1 >= 'A')
+                d1 -= ('A' - 10);
+            else
+                d1 -= '0';
+
+            if (d2 >= 'a')
+                d2 -= 'A'-'a';
+            if (d2 >= 'A')
+                d2 -= ('A' - 10);
+            else
+                d2 -= '0';
+
+            *decoded++ = 16*d1+d2;
+            encoded+=3;
+        } else {
+            *decoded++ = *encoded++;
+        }
+    }
+    *decoded++ = '\0';
+}
+
 #ifdef READ_FILE
 #include <sys/stat.h>
 #endif
@@ -123,7 +155,8 @@ enum responsetypes {
   SEND_PNG,
   SEND_SWF,
   SEND_BAD,
-  SEND_SSL
+  SEND_SSL,
+  SEND_REDIRECT
 };
 
 #ifdef DO_COUNT
@@ -142,6 +175,9 @@ volatile sig_atomic_t swf = 0;
 volatile sig_atomic_t ssl = 0;
 #endif
 #endif                          // TEXT_REPLY
+#ifdef DECODE_URL
+volatile sig_atomic_t rdr = 0;
+#endif
 #endif                          // DO_COUNT
 
 void signal_handler(int sig)    // common signal handler
@@ -160,6 +196,11 @@ void signal_handler(int sig)    // common signal handler
         case SEND_GIF:
           gif++;
           break;
+#ifdef DECODE_URL
+        case SEND_REDIRECT:
+          rdr++;
+          break;
+#endif
 #ifdef TEXT_REPLY
         case SEND_BAD:
           bad++;
@@ -208,6 +249,9 @@ void signal_handler(int sig)    // common signal handler
            ", %d ssl"
 #endif
 #endif                          // TEXT_REPLY
+#ifdef DECODE_URL
+           ", %d rdr"
+#endif
            , count, err, gif
 #ifdef TEXT_REPLY
            , bad, txt
@@ -218,6 +262,9 @@ void signal_handler(int sig)    // common signal handler
            , ssl
 #endif
 #endif                          // TEXT_REPLY
+#ifdef DECODE_URL
+           , rdr
+#endif
         );
 
     if (sig == SIGUSR1) {
@@ -229,6 +276,7 @@ void signal_handler(int sig)    // common signal handler
 #endif                          // TINY
   }
 }
+
 
 #ifdef TEST
 void *get_in_addr(struct sockaddr *sa)  // get sockaddr, IPv4 or IPv6
@@ -272,9 +320,21 @@ int main(int argc, char *argv[])        // program start
   int do_gif = 0;
 #endif
   int hsize = 0;
+#ifdef DECODE_URL
+  char *location;
+#endif
   struct stat file_stat;
   FILE *fp;
 #endif                          // READ_FILE
+
+#ifdef DECODE_URL
+  const char *httpredirect = 
+      "HTTP/1.1 302 Found\r\n"
+      "Location: %sn\r\n"
+      "Content-type: text/plain\r\n"
+      "Content-length: 0\r\n"
+      "Connection: close\r\n\r\n";
+#endif
 
   static unsigned char httpnullpixel[] =
       "HTTP/1.1 200 OK\r\n"
@@ -592,7 +652,7 @@ int main(int argc, char *argv[])        // program start
   }
   if ((setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(int)) != OK)
       /* only use selected i/f */
-      || (strlen(ifname) > 0 && (setsockopt(sockfd, SOL_SOCKET, SO_BINDTODEVICE, ifname, IFNAMSIZ) != OK))
+      || (strlen(ifname) > 1 && (setsockopt(sockfd, SOL_SOCKET, SO_BINDTODEVICE, ifname, IFNAMSIZ) != OK))
       /* send short packets straight away */
       || (setsockopt(sockfd, SOL_TCP, TCP_NODELAY, &yes, sizeof(int)) != OK)
       /* try to prevent hanging processes in FIN_WAIT2 */
@@ -729,52 +789,70 @@ int main(int argc, char *argv[])        // program start
               } else {
                 status = DEFAULT_REPLY; // send default from here
                 /* trim up to non path chars */
-                char *path = strtok(NULL, " ?#;=");     // "?;#:*<>[]='\"\\,|!~()"
+                char *path = strtok(NULL, " ");//, " ?#;=");     // "?;#:*<>[]='\"\\,|!~()"
                 if (path == NULL) {
                   MYLOG(LOG_ERR, "null path");
                 } else {
+#ifdef DECODE_URL
+                  /* pick out encoded urls (usually advert redirects) */
+                  if (strstr(path, "=http") && strchr(path, '%')) {
+                    TESTPRINT("decoding url\n");
+                    char *decoded = malloc(strlen(path)+1);
+                    urldecode(decoded, path);
+                    /* double decode */
+                    urldecode(path, decoded);
+                    free(decoded);
+                  }
                   TESTPRINT("path: '%s'\n", path);
-                  char *file = strrchr(path, '/');
-                  if (file == NULL) {
-                    MYLOG(LOG_ERR, "invalid file path %s", path);
-                  } else {
-                    TESTPRINT("file: '%s'\n", file);
-                    char *ext = strrchr(file, '.');
-                    if (ext == NULL) {
-                      MYLOG(LOG_ERR, "No file extension %s", file);
-                    } else {
-                      TESTPRINT("ext: '%s'\n", ext);
-#ifdef NULLSERV_REPLIES
-                      if (!strcasecmp(ext, ".gif")) {
-                        TESTPRINT("Sending gif response\n");
-                        status = SEND_GIF;
-                        response = httpnullpixel;
-                        rsize = sizeof httpnullpixel - 1;
-                      } else if (!strcasecmp(ext, ".png")) {
-                        TESTPRINT("Sending png response\n");
-                        status = SEND_PNG;
-                        response = httpnull_png;
-                        rsize = sizeof httpnull_png - 1;
-                      } else if (!strncasecmp(ext, ".jp", 3)) {
-                        TESTPRINT("Sending jpg response\n");
-                        status = SEND_JPG;
-                        response = httpnull_jpg;
-                        rsize = sizeof httpnull_jpg - 1;
-                      } else if (!strcasecmp(ext, ".swf")) {
-                        TESTPRINT("Sending swf response\n");
-                        status = SEND_SWF;
-                        response = httpnull_swf;
-                        rsize = sizeof httpnull_swf - 1;
-                      }
-#else
-                      if (!strncasecmp(ext, ".js", 3)) {        /* .jsx ? */
-                        status = SEND_TXT;
-                        TESTPRINT("Sending Txt response\n");
-                        response = httpnulltext;
-                        rsize = sizeof httpnulltext - 1;
-                      }
+                  if (strstr(path, "http://")) {
+                    status = SEND_REDIRECT;
+                    location = (char *) malloc(strlen(path));
+                    strcpy(location, path);
+                  } else
 #endif
-                      /* add other response types here */
+                  {
+                    char *file = strrchr(strtok(path, "?#;="), '/');
+                    if (file == NULL) {
+                      MYLOG(LOG_ERR, "invalid file path %s", path);
+                    } else {
+                      TESTPRINT("file: '%s'\n", file);
+                      char *ext = strrchr(file, '.');
+                      if (ext == NULL) {
+                        MYLOG(LOG_ERR, "No file extension %s", file);
+                      } else {
+                        TESTPRINT("ext: '%s'\n", ext);
+#ifdef NULLSERV_REPLIES
+                        if (!strcasecmp(ext, ".gif")) {
+                          TESTPRINT("Sending gif response\n");
+                          status = SEND_GIF;
+                          response = httpnullpixel;
+                          rsize = sizeof httpnullpixel - 1;
+                        } else if (!strcasecmp(ext, ".png")) {
+                          TESTPRINT("Sending png response\n");
+                          status = SEND_PNG;
+                          response = httpnull_png;
+                          rsize = sizeof httpnull_png - 1;
+                        } else if (!strncasecmp(ext, ".jp", 3)) {
+                          TESTPRINT("Sending jpg response\n");
+                          status = SEND_JPG;
+                          response = httpnull_jpg;
+                          rsize = sizeof httpnull_jpg - 1;
+                        } else if (!strcasecmp(ext, ".swf")) {
+                          TESTPRINT("Sending swf response\n");
+                          status = SEND_SWF;
+                          response = httpnull_swf;
+                          rsize = sizeof httpnull_swf - 1;
+                        }
+#else
+                        if (!strncasecmp(ext, ".js", 3)) {        /* .jsx ? */
+                          status = SEND_TXT;
+                          TESTPRINT("Sending Txt response\n");
+                          response = httpnulltext;
+                          rsize = sizeof httpnulltext - 1;
+                        }
+#endif
+                        /* add other response types here */
+                      }
                     }
                   }
                 }
@@ -792,7 +870,21 @@ int main(int argc, char *argv[])        // program start
         status = SEND_GIF;
         TESTPRINT("Sending a gif response\n");
 #endif
-        rv = send(new_fd, response, rsize, 0);
+
+#ifdef DECODE_URL
+        if (status == SEND_REDIRECT) {
+            TESTPRINT("Sending a redirect: %s\n", location);
+            char *url = strstr(location, "http://");
+            char *boof = malloc(strlen(httpredirect) + strlen(location));
+            sprintf(boof, httpredirect, url);
+            rv = send(new_fd, boof, strlen(boof), 0);
+            free(boof);
+            free(location);
+        } else
+#endif
+        {
+            rv = send(new_fd, response, rsize, 0);
+        }
 
         /* check for error message, but don't bother checking that all bytes sent */
         if (rv < 0) {
