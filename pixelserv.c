@@ -4,7 +4,7 @@
 * single pixel http string from http://proxytunnel.sourceforge.net/pixelserv.php
 */
 
-#define VERSION "V32"
+#define VERSION "0.33"
 
 #define BACKLOG 30              // how many pending connections queue will hold
 #define CHAR_BUF_SIZE 1023      //surprising how big requests can be with cookies etc
@@ -566,7 +566,7 @@ int main(int argc, char *argv[])        // program start
   }
 
   openlog("pixelserv", LOG_PID | LOG_CONS | LOG_PERROR, LOG_DAEMON);
-  syslog(LOG_INFO, "%s %s compiled: %s from %s", argv[0], VERSION,
+  syslog(LOG_INFO, "%s version: %s compiled: %s from %s", argv[0], VERSION,
          __DATE__ " " __TIME__, __FILE__);
 
 #ifdef READ_FILE
