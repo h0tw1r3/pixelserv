@@ -4,7 +4,7 @@
 * single pixel http string from http://proxytunnel.sourceforge.net/pixelserv.php
 */
 
-#define VERSION "0.33"
+#define VERSION "0.33-1"
 
 #define BACKLOG 30              // how many pending connections queue will hold
 #define CHAR_BUF_SIZE 1023      //surprising how big requests can be with cookies etc
@@ -804,7 +804,7 @@ int main(int argc, char *argv[])        // program start
                     free(decoded);
                   }
                   TESTPRINT("path: '%s'\n", path);
-                  if (strstr(path, "http://")) {
+                  if (strstr(path, "http://") || strstr(path, "https://")) {
                     status = SEND_REDIRECT;
                     location = (char *) malloc(strlen(path));
                     strcpy(location, path);
@@ -875,6 +875,9 @@ int main(int argc, char *argv[])        // program start
         if (status == SEND_REDIRECT) {
             TESTPRINT("Sending a redirect: %s\n", location);
             char *url = strstr(location, "http://");
+            if (url == NULL) {
+                url = strstr(location, "https://");
+            }
             char *boof = malloc(strlen(httpredirect) + strlen(location));
             sprintf(boof, httpredirect, url);
             rv = send(new_fd, boof, strlen(boof), 0);
