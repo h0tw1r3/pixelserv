@@ -263,11 +263,7 @@ int main(int argc, char *argv[])        // program start
   int use_ip = 0;
   char buf[CHAR_BUF_SIZE + 1];
 
-#ifdef PORT_MODE
   char port[6] = DEFAULT_PORT;  // not sure how long this can be, use number if name too long
-#else
-#define port DEFAULT_PORT
-#endif
   int i;
 
 #ifdef IF_MODE
@@ -472,12 +468,10 @@ int main(int argc, char *argv[])        // program start
           ifname[IFNAMSIZ - 1] = '\0';
           break;
 #endif
-#ifdef PORT_MODE
         case 'p':
           strncpy(port, argv[++i], sizeof port);
           port[sizeof port - 1] = '\0';
           break;
-#endif
 #ifdef DROP_ROOT
         case 'u':
           strncpy(user, argv[++i], sizeof user);
@@ -511,9 +505,7 @@ int main(int argc, char *argv[])        // program start
   if (error) {
 #ifndef TINY
     printf("Usage:%s" " [IP No/hostname (all)]"
-#ifdef PORT_MODE
            " [-p port (80)]"
-#endif
 #ifdef IF_MODE
            " [-n i/f (all)]"
 #endif
