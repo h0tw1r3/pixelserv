@@ -4,7 +4,7 @@
 * single pixel http string from http://proxytunnel.sourceforge.net/pixelserv.php
 */
 
-#define VERSION "0.33-1"
+#define VERSION "0.33-2"
 
 #define BACKLOG 30              // how many pending connections queue will hold
 #define CHAR_BUF_SIZE 1023      //surprising how big requests can be with cookies etc
@@ -330,7 +330,7 @@ int main(int argc, char *argv[])        // program start
 #ifdef DECODE_URL
   const char *httpredirect = 
       "HTTP/1.1 302 Found\r\n"
-      "Location: %sn\r\n"
+      "Location: %s\r\n"
       "Content-type: text/plain\r\n"
       "Content-length: 0\r\n"
       "Connection: close\r\n\r\n";
