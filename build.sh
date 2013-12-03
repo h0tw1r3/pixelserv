@@ -2,7 +2,7 @@
 
 SRC=pixelserv.c
 OPTS="-DDO_COUNT -DTEXT_REPLY -DREAD_FILE -DREAD_GIF -DNULLSERV_REPLIES -DSSL_RESP -DDECODE_URL"
-TEST_OPTS="-DTEST -DVERBOSE" # -DHEX_DUMP
+#TEST_OPTS="-DTEST -DVERBOSE" # -DHEX_DUMP
 
 CC="gcc" # -m32" 
 CFLAGS="-Os -s -Wall -ffunction-sections -fdata-sections -fno-strict-aliasing"
