@@ -94,37 +94,28 @@ static void hex_dump(void *data, int size)
 }
 #endif
 
-/* http://stackoverflow.com/questions/2673207/c-c-url-decode-library */
-void urldecode(char *decoded, const char *encoded)
-{
-    char d1;
-    char d2;
-    while (*encoded) {
-        if ((*encoded == '%') &&
-                ((d1 = encoded[1]) && (d2 = encoded[2])) &&
-                (isxdigit(d1) && isxdigit(d2))) {
-            if (d1 >= 'a')
-                d1 -= 'A'-'a';
-            if (d1 >= 'A')
-                d1 -= ('A' - 10);
-            else
-                d1 -= '0';
-
-            if (d2 >= 'a')
-                d2 -= 'A'-'a';
-            if (d2 >= 'A')
-                d2 -= ('A' - 10);
-            else
-                d2 -= '0';
-
-            *decoded++ = 16*d1+d2;
-            encoded+=3;
-        } else {
-            *decoded++ = *encoded++;
-        }
-    }
-    *decoded++ = '\0';
+#ifdef DECODE_URL
+char from_hex(char ch) {
+    return isdigit(ch) ? ch - '0' : tolower(ch) - 'a' + 10;
 }
+
+void urldecode(char *decoded, char *encoded) {
+    char *pstr = encoded, *pbuf = decoded;
+
+    while (*pstr) {
+      if (*pstr == '%') {
+        if (pstr[1] && pstr[2]) {
+            *pbuf++ = from_hex(pstr[1]) << 4 | from_hex(pstr[2]);
+            pstr += 2;
+        }
+      } else {
+        *pbuf++ = *pstr;
+      }
+      pstr++;
+    }
+    *pbuf = '\0';
+}
+#endif
 
 #ifdef READ_FILE
 #include <sys/stat.h>
@@ -338,7 +329,7 @@ int main(int argc, char *argv[])        // program start
 
 #ifdef DECODE_URL
   const char *httpredirect = 
-      "HTTP/1.1 302 Found\r\n"
+      "HTTP/1.1 307 Temporary Redirect\r\n"
       "Location: %s\r\n"
       "Content-type: text/plain\r\n"
       "Content-length: 0\r\n"
