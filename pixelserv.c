@@ -94,6 +94,27 @@ static void hex_dump(void *data, int size)
 }
 #endif
 
+char * strstr_last(const char *str1, const char *str2) {
+  char *strp;
+  int len1, len2;
+  len2 = strlen(str2);
+  if (len2==0) {
+    return (char *) str1;
+  }
+  len1 = strlen(str1);
+  if (len1 - len2 <= 0) {
+    return 0;
+  }
+  strp = (char *)(str1 + len1 - len2);
+  while (strp != str1) {
+    if (*strp == *str2 && strncmp(strp, str2, len2) == 0) {
+      return strp;
+    }
+    strp--;
+  }
+  return 0;
+}
+
 char from_hex(char ch) {
     return isdigit(ch) ? ch - '0' : tolower(ch) - 'a' + 10;
 }
@@ -304,7 +325,8 @@ int main(int argc, char *argv[])        // program start
   struct passwd *pw;
 
   int do_redirect = 0;
-  char *location;
+  char *location = NULL;
+  char *url = NULL;
 
 #ifdef READ_FILE
   char *fname = NULL;
@@ -317,7 +339,7 @@ int main(int argc, char *argv[])        // program start
   FILE *fp;
 #endif                          // READ_FILE
 
-  const char *httpredirect = 
+  static const char *httpredirect = 
       "HTTP/1.1 307 Temporary Redirect\r\n"
       "Location: %s\r\n"
       "Content-type: text/plain\r\n"
@@ -777,34 +799,25 @@ int main(int argc, char *argv[])        // program start
                 if (path == NULL) {
                   MYLOG(LOG_ERR, "null path");
                 } else {
-                  if (do_redirect) {
-                    /* pick out encoded urls (usually advert redirects) */
-                    if (strstr(path, "=http") && strchr(path, '%')) {
-                      TESTPRINT("decoding url\n");
-                      char *decoded = malloc(strlen(path)+1);
-                      urldecode(decoded, path);
-                      /* double decode */
-                      urldecode(path, decoded);
-                      free(decoded);
-                    }
-                    TESTPRINT("path: '%s'\n", path);
-                  }
-                  if (do_redirect && (strstr(path, "http://") || strstr(path, "https://"))) {
-                    status = SEND_REDIRECT;
-                    location = (char *) malloc(strlen(path));
-                    strcpy(location, path);
-                    response = httpnullpixel;
-                    rsize = sizeof httpnullpixel - 1;
-                    TESTPRINT("Sending a redirect: %s\n", location);
-                    char *url = strstr(location, "http://");
+                  /* pick out encoded urls (usually advert redirects) */
+                  if (do_redirect && strstr(path, "=http") && strchr(path, '%')) {
+                    TESTPRINT("decoding url\n");
+                    char *decoded = malloc(strlen(path)+1);
+                    urldecode(decoded, path);
+                    /* double decode */
+                    urldecode(path, decoded);
+                    free(decoded);
+                    url = strstr_last(path, "http://");
                     if (url == NULL) {
-                        url = strstr(location, "https://");
+                      url = strstr_last(path, "https://");
                     }
-                    char *boof = malloc(strlen(httpredirect) + strlen(location) + 1);
-                    sprintf(boof, httpredirect, url);
-                    strcpy((char *)response, boof);
-                    rsize = sizeof boof - 1;
-                    free(boof);
+                  }
+                  if (do_redirect && url) {
+                    status = SEND_REDIRECT;
+                    rsize = asprintf(&location, httpredirect, url);
+                    response = (unsigned char *)(location);
+                    TESTPRINT("Sending redirect: %s\n", response);
+                    url = NULL;
                   } else {
                     char *file = strrchr(strtok(path, "?#;="), '/');
                     if (file == NULL) {
@@ -865,11 +878,7 @@ int main(int argc, char *argv[])        // program start
         status = SEND_GIF;
         TESTPRINT("Sending a gif response\n");
 #endif
-
-        if (status == SEND_REDIRECT) {
-        } else {
-            rv = send(new_fd, response, rsize, 0);
-        }
+        rv = send(new_fd, response, rsize, 0);
 
         /* check for error message, but don't bother checking that all bytes sent */
         if (rv < 0) {
