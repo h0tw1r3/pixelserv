@@ -94,7 +94,6 @@ static void hex_dump(void *data, int size)
 }
 #endif
 
-#ifdef DECODE_URL
 char from_hex(char ch) {
     return isdigit(ch) ? ch - '0' : tolower(ch) - 'a' + 10;
 }
@@ -115,7 +114,6 @@ void urldecode(char *decoded, char *encoded) {
     }
     *pbuf = '\0';
 }
-#endif
 
 #ifdef READ_FILE
 #include <sys/stat.h>
@@ -171,9 +169,7 @@ volatile sig_atomic_t swf = 0;
 volatile sig_atomic_t ssl = 0;
 #endif
 #endif                          // TEXT_REPLY
-#ifdef DECODE_URL
 volatile sig_atomic_t rdr = 0;
-#endif
 #endif                          // DO_COUNT
 
 void signal_handler(int sig)    // common signal handler
@@ -192,11 +188,9 @@ void signal_handler(int sig)    // common signal handler
         case SEND_GIF:
           gif++;
           break;
-#ifdef DECODE_URL
         case SEND_REDIRECT:
           rdr++;
           break;
-#endif
 #ifdef TEXT_REPLY
         case SEND_BAD:
           bad++;
@@ -245,9 +239,7 @@ void signal_handler(int sig)    // common signal handler
            ", %d ssl"
 #endif
 #endif                          // TEXT_REPLY
-#ifdef DECODE_URL
            ", %d rdr"
-#endif
            , count, err, gif
 #ifdef TEXT_REPLY
            , bad, txt
@@ -258,9 +250,7 @@ void signal_handler(int sig)    // common signal handler
            , ssl
 #endif
 #endif                          // TEXT_REPLY
-#ifdef DECODE_URL
            , rdr
-#endif
         );
 
     if (sig == SIGUSR1) {
@@ -313,6 +303,9 @@ int main(int argc, char *argv[])        // program start
   char user[8] = DEFAULT_USER;  // used to be long enough
   struct passwd *pw;
 
+  int do_redirect = 0;
+  char *location;
+
 #ifdef READ_FILE
   char *fname = NULL;
   int fsize;
@@ -320,21 +313,16 @@ int main(int argc, char *argv[])        // program start
   int do_gif = 0;
 #endif
   int hsize = 0;
-#ifdef DECODE_URL
-  char *location;
-#endif
   struct stat file_stat;
   FILE *fp;
 #endif                          // READ_FILE
 
-#ifdef DECODE_URL
   const char *httpredirect = 
       "HTTP/1.1 307 Temporary Redirect\r\n"
       "Location: %s\r\n"
       "Content-type: text/plain\r\n"
       "Content-length: 0\r\n"
       "Connection: close\r\n\r\n";
-#endif
 
   static unsigned char httpnullpixel[] =
       "HTTP/1.1 200 OK\r\n"
@@ -491,6 +479,9 @@ int main(int argc, char *argv[])        // program start
         default:
           error = 1;
         }
+      } else if (argv[i][1] == 'r') {
+          do_redirect = 1;
+          break;
       } else {
         error = 1;
       }
@@ -509,6 +500,7 @@ int main(int argc, char *argv[])        // program start
            " [-p port (80 and 443)]"
            " [-n i/f (all)]"
            " [-u user (\"nobody\")]"
+           " [-r redirect encoded path (tracker links)]"
 #ifdef READ_FILE
            " [-f response.bin]"
 #ifdef READ_GIF
@@ -785,24 +777,35 @@ int main(int argc, char *argv[])        // program start
                 if (path == NULL) {
                   MYLOG(LOG_ERR, "null path");
                 } else {
-#ifdef DECODE_URL
-                  /* pick out encoded urls (usually advert redirects) */
-                  if (strstr(path, "=http") && strchr(path, '%')) {
-                    TESTPRINT("decoding url\n");
-                    char *decoded = malloc(strlen(path)+1);
-                    urldecode(decoded, path);
-                    /* double decode */
-                    urldecode(path, decoded);
-                    free(decoded);
+                  if (do_redirect) {
+                    /* pick out encoded urls (usually advert redirects) */
+                    if (strstr(path, "=http") && strchr(path, '%')) {
+                      TESTPRINT("decoding url\n");
+                      char *decoded = malloc(strlen(path)+1);
+                      urldecode(decoded, path);
+                      /* double decode */
+                      urldecode(path, decoded);
+                      free(decoded);
+                    }
+                    TESTPRINT("path: '%s'\n", path);
                   }
-                  TESTPRINT("path: '%s'\n", path);
-                  if (strstr(path, "http://") || strstr(path, "https://")) {
+                  if (do_redirect && (strstr(path, "http://") || strstr(path, "https://"))) {
                     status = SEND_REDIRECT;
                     location = (char *) malloc(strlen(path));
                     strcpy(location, path);
-                  } else
-#endif
-                  {
+                    response = httpnullpixel;
+                    rsize = sizeof httpnullpixel - 1;
+                    TESTPRINT("Sending a redirect: %s\n", location);
+                    char *url = strstr(location, "http://");
+                    if (url == NULL) {
+                        url = strstr(location, "https://");
+                    }
+                    char *boof = malloc(strlen(httpredirect) + strlen(location) + 1);
+                    sprintf(boof, httpredirect, url);
+                    strcpy((char *)response, boof);
+                    rsize = sizeof boof - 1;
+                    free(boof);
+                  } else {
                     char *file = strrchr(strtok(path, "?#;="), '/');
                     if (file == NULL) {
                       MYLOG(LOG_ERR, "invalid file path %s", path);
@@ -863,21 +866,8 @@ int main(int argc, char *argv[])        // program start
         TESTPRINT("Sending a gif response\n");
 #endif
 
-#ifdef DECODE_URL
         if (status == SEND_REDIRECT) {
-            TESTPRINT("Sending a redirect: %s\n", location);
-            char *url = strstr(location, "http://");
-            if (url == NULL) {
-                url = strstr(location, "https://");
-            }
-            char *boof = malloc(strlen(httpredirect) + strlen(location));
-            sprintf(boof, httpredirect, url);
-            rv = send(new_fd, boof, strlen(boof), 0);
-            free(boof);
-            free(location);
-        } else
-#endif
-        {
+        } else {
             rv = send(new_fd, response, rsize, 0);
         }
 
