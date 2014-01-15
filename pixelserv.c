@@ -311,6 +311,7 @@ int main(int argc, char *argv[])        // program start
   char ip_addr[INET_ADDRSTRLEN] = DEFAULT_IP;
   int use_ip = 0;
   char buf[CHAR_BUF_SIZE + 1];
+  char *bufptr;
 
   int *ports = malloc(MAX_PORTS * sizeof(int));
   int num_ports = 0;
@@ -781,7 +782,9 @@ int main(int argc, char *argv[])        // program start
             rsize = sizeof SSL_no - 1;
           } else {
 #endif
-            char *method = strtok(buf, " ");
+            char *req = strtok_r(buf, "\r\n", &bufptr);
+            char *method = strtok(req, " ");
+
             if (method == NULL) {
               MYLOG(LOG_ERR, "null method");
             } else {
@@ -801,7 +804,6 @@ int main(int argc, char *argv[])        // program start
                 } else {
                   /* pick out encoded urls (usually advert redirects) */
                   if (do_redirect && strstr(path, "=http") && strchr(path, '%')) {
-                    TESTPRINT("decoding url\n");
                     char *decoded = malloc(strlen(path)+1);
                     urldecode(decoded, path);
                     /* double decode */
@@ -811,12 +813,26 @@ int main(int argc, char *argv[])        // program start
                     if (url == NULL) {
                       url = strstr_last(path, "https://");
                     }
+                    /* WORKAROUND: google analytics block - request bomb on pages with conversion callbacks (see in chrome) */
+                    if (url) {
+                      char *tok = NULL;
+                      for (tok = strtok_r(NULL, "\r\n", &bufptr); tok; tok = strtok_r(NULL, "\r\n", &bufptr)) {
+                        char *hkey = strtok(tok, ":");
+                        char *hvalue = strtok(NULL, "\r\n");
+                        if (strstr(hkey, "Referer")) {
+                          if (strstr(hvalue, url)) {
+                            url = NULL;
+                            printf("%s:%s\n", hkey, hvalue);
+                          }
+                        }
+                      }
+                    }
                   }
                   if (do_redirect && url) {
                     status = SEND_REDIRECT;
                     rsize = asprintf(&location, httpredirect, url);
                     response = (unsigned char *)(location);
-                    TESTPRINT("Sending redirect: %s\n", response);
+                    TESTPRINT("Sending redirect: %s\n", url);
                     url = NULL;
                   } else {
                     char *file = strrchr(strtok(path, "?#;="), '/');
