@@ -399,21 +399,21 @@ int main(int argc, char *argv[])        // program start
       "\x89"
       "PNG"
       "\r\n"
-      "\x1a\n"	// EOF
-      "\0\0\0\x0d" // 13 bytes length
+      "\x1a\n"            // EOF
+      "\0\0\0\x0d"        // 13 bytes length
       "IHDR"
-      "\0\0\0\1\0\0\0\1"	// width x height
-      "\x08"	// bit depth
-      "\x06"	// Truecolour with alpha
-      "\0\0\0"	// compression, filter, interlace
-      "\x1f\x15\xc4\x89"	// CRC
-      "\0\0\0\x0a"	// 10 bytes length
+      "\0\0\0\1\0\0\0\1"  // width x height
+      "\x08"              // bit depth
+      "\x06"              // Truecolour with alpha
+      "\0\0\0"            // compression, filter, interlace
+      "\x1f\x15\xc4\x89"  // CRC
+      "\0\0\0\x0a"        // 10 bytes length
       "IDAT"
       "\x78\x9c\x63\0\1\0\0\5\0\1"
-      "\x0d\x0a\x2d\xb4"	// CRC
-      "\0\0\0\0"	// 0 length
+      "\x0d\x0a\x2d\xb4"  // CRC
+      "\0\0\0\0"          // 0 length
       "IEND"
-      "\xae\x42\x60\x82";	// CRC
+      "\xae\x42\x60\x82"; // CRC
 
   static unsigned char httpnull_jpg[] =
       "HTTP/1.1 200 OK\r\n"
@@ -927,47 +927,3 @@ int main(int argc, char *argv[])        // program start
 
   return (EXIT_SUCCESS);
 }
-
-/*
-V1	Proof of concept mstombs www.linkysinfo.org 06/09/09
-V2	usleep after send to delay socket close 08/09/09
-V3	TCP_NODELAY not usleep 09/09/09
-V4	daemonize with syslog 10/09/09
-V5	usleep back in 10/09/09
-V6	only use IPV4, add linger and shutdown to avoid need for sleep 11/09/09
-	Consistent exit codes and version stamp
-V7	use shutdown/read/shutdown to cleanly flush and close connection
-V8	add inetd and listening IP option
-V9	minimalize
-V10	make inetd mode compiler option -DINETD_MODE
-V11	debug TCP_NODELAY back and MSG_DONTWAIT flag on send
-V12	Change read to recv with MSG_DONTWAIT and add MSG_NOSIGNAL on send
-V13	DONTWAIT's just trigger RST connection closing so remove
-V14	Back to V8 fork(), add header "connection: close"" and reformat pixel def
-V15	add command line options for variable port 2nd March 2010
-V16	add command line option for ifname, add SO_LINGER2 to not hang in FIN_WAIT2
-V17	only send null pixel if image requested, make most options compiler options to make small version
-V18	move image file test back into TEST
-V19	add TINY build which has no output.
-V20	Remove default interface "br0" assignment"
-	amend http header to not encourage server like byte requests"
-	use CHAR_BUF_SIZE rather than sizeof
-	try again to turn off FIN_WAIT2
-V21	run as user nobody by default
-V22	Use apache style close using select to timeout connection
-	and not leave dormant processes lying around if browser doeesn't close connection cleanly
-	use SIGURS1 for report count, not system signal SIGHUP - thanks Rodney
-V23	be more selective about replies
-V24	common signal_handler and minor mods to minimize size
-	Fix V23 bugs and use null string and javascript detection by ~nephelim~
-V25	test version for robust parsing of path
-V26	timeout on recv, block signals in child, enhance stats collection, fix bug in "-u user"
-V27	add error reply messages
-V28	move log, add option to read nullpixel from file.
-V29	add option to read gif from file
-V30	tidy up
-V31 development - add nullserv responses from https://github.com/flexiondotorg/nullserv 30/05/13
-V32 Add candidate SSL response
-V33 reduce size of gif and png - NOT the same as https://github.com/h0tw1r3/pixelserv which has extra DECODE_URL option
-V34 add MULTIPORT option to also listen by default on https port 443
-*/
