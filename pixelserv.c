@@ -348,7 +348,7 @@ int main(int argc, char *argv[])        // program start
       "Connection: close\r\n\r\n";
 
   static unsigned char httpnullpixel[] =
-      "HTTP/1.1 200 OK\r\n"
+      "HTTP/1.1 404 Not Found\r\n"
       "Content-type: image/gif\r\n"
       "Content-length: 42\r\n"
       "Connection: close\r\n"
@@ -378,7 +378,7 @@ int main(int argc, char *argv[])        // program start
 
 #ifdef TEXT_REPLY
   static unsigned char httpnulltext[] =
-      "HTTP/1.1 200 OK\r\n"
+      "HTTP/1.1 404 Not Found\r\n"
       "Content-type: text/html\r\n"
       "Content-length: 0\r\n"
       "Connection: close\r\n"
@@ -391,7 +391,7 @@ int main(int argc, char *argv[])        // program start
 
 #ifdef NULLSERV_REPLIES
   static unsigned char httpnull_png[] =
-      "HTTP/1.1 200 OK\r\n"
+      "HTTP/1.1 404 Not Found\r\n"
       "Content-type: image/png\r\n"
       "Content-length: 67\r\n"
       "Connection: close\r\n"
@@ -416,7 +416,7 @@ int main(int argc, char *argv[])        // program start
       "\xae\x42\x60\x82"; // CRC
 
   static unsigned char httpnull_jpg[] =
-      "HTTP/1.1 200 OK\r\n"
+      "HTTP/1.1 404 Not Found\r\n"
       "Content-type: image/jpeg\r\n"
       "Content-length: 125\r\n"
       "Connection: close\r\n"
@@ -431,7 +431,7 @@ int main(int argc, char *argv[])        // program start
       "\x00\x08\x01\x01\x00\x00\x3f\x00\xd2\xcf\x20\xff\xd9";
 
   static unsigned char httpnull_swf[] =
-      "HTTP/1.1 200 OK\r\n"
+      "HTTP/1.1 404 Not Found\r\n"
       "Content-type: application/x-shockwave-flash\r\n"
       "Content-length: 99\r\n"
       "Connection: close\r\n"
@@ -566,7 +566,7 @@ int main(int argc, char *argv[])        // program start
 #ifdef READ_GIF
     if (do_gif) {
       snprintf(buf, CHAR_BUF_SIZE,
-               "HTTP/1.1 200 OK\r\n"
+               "HTTP/1.1 404 Not Found\r\n"
                "Content-type: image/gif\r\n"
                "Content-length: %d\r\n" "Connection: close\r\n" "\r\n", fsize);
 
