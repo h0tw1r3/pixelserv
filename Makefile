@@ -22,15 +22,17 @@ dist:
 mips:
 	$(CROSSCC) -mips32 $(CFLAGS) $(LDFLAGS) $(OPTS) $(SRC) -o dist/pixelserv.mips32
 	$(CROSSSTRIP) dist/pixelserv.mips32
+	upx dist/pixelserv.mips32
 
 host32:
 	$(CC) -m32 $(CFLAGS) $(LDFLAGS) $(OPTS) $(SRC) -o dist/pixelserv.x86
-	$(STRIP) dist/pixelserv.x86
+	strip dist/pixelserv.x86
 
 host64:
 	$(CC) -m64 $(CFLAGS) $(LDFLAGS) $(OPTS) $(SRC) -o dist/pixelserv.amd64
-	$(STRIP) dist/pixelserv.amd64
+	strip dist/pixelserv.amd64
 
 tiny:
 	$(CROSSCC) -mips32 $(CFLAGS) $(LDFLAGS) $(TINY_OPTS) $(SRC) -o dist/pixelserv.tiny.mips32
 	$(CROSSSTRIP) dist/pixelserv.tiny.mips32
+	upx dist/pixelserv.tiny.mips32
