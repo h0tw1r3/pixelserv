@@ -1,38 +1,51 @@
-OPTS      := -DDO_COUNT -DTEXT_REPLY -DREAD_FILE -DREAD_GIF -DNULLSERV_REPLIES -DSSL_RESP
+DISTNAME   = pixelserv
+SRCS       = $(DISTNAME).c
+
+OPTS      := -O2 -DDO_COUNT -DTEXT_REPLY -DREAD_FILE -DREAD_GIF -DNULLSERV_REPLIES -DSSL_RESP
 TEST_OPTS := -DTEST -DVERBOSE
 TINY_OPTS := -Os -DTINY
 DEBUG_OPT := -DHEX_DUMP
+
 CC        := gcc
-CFLAGS    += -O2 -s -Wall -ffunction-sections -fdata-sections -fno-strict-aliasing
+CFLAGS    += -s -Wall -ffunction-sections -fdata-sections -fno-strict-aliasing
 LDFLAGS   += -Wl,--gc-sections
-STRIP     := strip -s -R .note -R .comment -R .gnu.version -R .gnu.version_r
-CROSSCC   := mipsel-uclibc-gcc
-CROSSSTRIP:= mipsel-uclibc-$(STRIP)
-SRC        = pixelserv.c
+STRIP     := strip -s
 
-# mips uclib toolchain
-export PATH := /opt/brcm/hndtools-mipsel-uclibc/bin:/opt/brcm/hndtools-mipsel-linux/bin:$(PATH)
+MIPTOOLS  := /opt/brcm/hndtools-mipsel-uclibc/bin:/opt/brcm/hndtools-mipsel-linux/bin
+MIPREFIX  := mipsel-uclibc-
+MIPSCC    := $(MIPREFIX)$(CC)
+MIPSSTRIP := $(MIPREFIX)$(STRIP) -R .note -R .comment -R .gnu.version -R .gnu.version_r
 
-all: dist mips tiny host32 host64
+ARMTOOLS  := /usr/local/x-tools/arm-unknown-linux-gnueabihf/bin/
+ARMPREFIX := arm-unknown-linux-gnueabihf-
+ARMCC     := $(ARMPREFIX)$(CC)
+ARMSTRIP  := $(ARMPREFIX)$(STRIP) -R .note -R .comment -R .gnu.version -R .gnu.version_r
+
+all: x86 x86_64 mips arm
 	@echo "Builds in dist folder."
 
 dist:
 	@mkdir dist
 
-mips:
-	$(CROSSCC) -mips32 $(CFLAGS) $(LDFLAGS) $(OPTS) $(SRC) -o dist/pixelserv.mips32
-	$(CROSSSTRIP) dist/pixelserv.mips32
-	upx dist/pixelserv.mips32
+compress: dist
+	upx dist/$(DISTNAME).*
 
-host32:
-	$(CC) -m32 $(CFLAGS) $(LDFLAGS) $(OPTS) $(SRC) -o dist/pixelserv.x86
-	strip dist/pixelserv.x86
+arm: dist
+	PATH=$(ARMTOOLS):$(PATH) $(ARMCC) $(CFLAGS) $(LDFLAGS) $(OPTS) $(SRCS) -o dist/$(DISTNAME).$@
+	PATH=$(ARMTOOLS):$(PATH) $(ARMCC) $(CFLAGS) $(LDFLAGS) $(TINY_OPTS) $(SRCS) -o dist/$(DISTNAME).tiny.$@
+	PATH=$(ARMTOOLS):$(PATH) $(ARMSTRIP) dist/$(DISTNAME).$@
+	PATH=$(ARMTOOLS):$(PATH) $(ARMSTRIP) dist/$(DISTNAME).tiny.$@
 
-host64:
-	$(CC) -m64 $(CFLAGS) $(LDFLAGS) $(OPTS) $(SRC) -o dist/pixelserv.amd64
-	strip dist/pixelserv.amd64
+mips: dist
+	PATH=$(MIPTOOLS):$(PATH) $(MIPSCC) $(CFLAGS) $(LDFLAGS) $(OPTS) $(SRCS) -o dist/$(DISTNAME).$@
+	PATH=$(MIPTOOLS):$(PATH) $(MIPSCC) $(CFLAGS) $(LDFLAGS) $(TINY_OPTS) $(SRCS) -o dist/$(DISTNAME).tiny.$@
+	PATH=$(MIPTOOLS):$(PATH) $(MIPSSTRIP) dist/$(DISTNAME).$@
+	PATH=$(MIPTOOLS):$(PATH) $(MIPSSTRIP) dist/$(DISTNAME).tiny.$@
 
-tiny:
-	$(CROSSCC) -mips32 $(CFLAGS) $(LDFLAGS) $(TINY_OPTS) $(SRC) -o dist/pixelserv.tiny.mips32
-	$(CROSSSTRIP) dist/pixelserv.tiny.mips32
-	upx dist/pixelserv.tiny.mips32
+x86: dist
+	$(CC) -m32 $(CFLAGS) $(LDFLAGS) $(OPTS) $(SRCS) -o dist/$(DISTNAME).$@
+	$(STRIP) dist/$(DISTNAME).$@
+
+x86_64: dist
+	$(CC) -m64 $(CFLAGS) $(LDFLAGS) $(OPTS) $(SRCS) -o dist/$(DISTNAME).$@
+	$(STRIP) dist/$(DISTNAME).$@
