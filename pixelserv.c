@@ -311,7 +311,6 @@ int main(int argc, char *argv[])        // program start
   char ip_addr[INET_ADDRSTRLEN] = DEFAULT_IP;
   int use_ip = 0;
   char buf[CHAR_BUF_SIZE + 1];
-  char *bufptr;
 
   int *ports = malloc(MAX_PORTS * sizeof(int));
   int num_ports = 0;
@@ -326,8 +325,11 @@ int main(int argc, char *argv[])        // program start
   struct passwd *pw;
 
   int do_redirect = 0;
+#ifdef TEXT_REPLY
   char *location = NULL;
   char *url = NULL;
+  char *bufptr;
+#endif
 
 #ifdef READ_FILE
   char *fname = NULL;
@@ -340,12 +342,14 @@ int main(int argc, char *argv[])        // program start
   FILE *fp;
 #endif                          // READ_FILE
 
+#ifdef TEXT_REPLY
   static const char *httpredirect = 
       "HTTP/1.1 307 Temporary Redirect\r\n"
       "Location: %s\r\n"
       "Content-type: text/plain\r\n"
       "Content-length: 0\r\n"
       "Connection: close\r\n\r\n";
+#endif
 
   static unsigned char httpnullpixel[] =
       "HTTP/1.1 200 OK\r\n"
