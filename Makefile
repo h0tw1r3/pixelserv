@@ -1,9 +1,9 @@
 OPTS      := -DDO_COUNT -DTEXT_REPLY -DREAD_FILE -DREAD_GIF -DNULLSERV_REPLIES -DSSL_RESP
 TEST_OPTS := -DTEST -DVERBOSE
-TINY_OPTS := -O3 -DTINY
+TINY_OPTS := -Os -DTINY
 DEBUG_OPT := -DHEX_DUMP
 CC        := gcc
-CFLAGS    += -Os -s -Wall -ffunction-sections -fdata-sections -fno-strict-aliasing
+CFLAGS    += -O2 -s -Wall -ffunction-sections -fdata-sections -fno-strict-aliasing
 LDFLAGS   += -Wl,--gc-sections
 STRIP     := strip -s -R .note -R .comment -R .gnu.version -R .gnu.version_r
 CROSSCC   := mipsel-uclibc-gcc
