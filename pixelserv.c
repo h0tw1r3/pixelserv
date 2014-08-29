@@ -932,6 +932,15 @@ int main(int argc, char *argv[]) // program start
 #endif
 				rv = send(new_fd, response, rsize, 0);
 
+#ifdef TExT_REPLY
+				if (status == SEND_REDIRECT) {
+					// free memory allocated by asprintf()
+					free(location);
+					location = NULL;
+				}
+#endif
+				response = NULL;
+
 				/* check for error message, but don't bother checking that all bytes sent */
 				if (rv < 0) {
 					MYLOG(LOG_WARNING, "send: %m");
