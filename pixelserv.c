@@ -17,6 +17,8 @@
 
 #define MAX_PORTS 10
 
+#define DEFAULT_STATS_PATH "/servstats"
+
 #define _GNU_SOURCE
 
 #include <stdio.h>
@@ -171,7 +173,8 @@ enum responsetypes {
 	SEND_ICO,
 	SEND_BAD,
 	SEND_SSL,
-	SEND_REDIRECT
+	SEND_REDIRECT,
+	SEND_STATS
 };
 
 #ifdef DO_COUNT
@@ -192,7 +195,42 @@ volatile sig_atomic_t ssl = 0;
 #endif
 #endif                          // TEXT_REPLY
 volatile sig_atomic_t rdr = 0;
-#endif                          // DO_COUNT
+volatile sig_atomic_t sta = 0;
+
+/* stats string generator
+ * note that caller is expected to call free()
+ * on the return value when done using it
+ * also, the purpose of sta_offset is to allow
+ * accounting for an in-progress status response
+ */
+inline char* get_stats(int sta_offset) {
+	char *retbuf = NULL;
+	asprintf(&retbuf, "%d reg, %d err, %d gif,"
+#ifdef TEXT_REPLY
+				" %d bad, %d txt"
+#ifdef NULLSERV_REPLIES
+				", %d jpg, %d png, %d swf %d ico"
+#endif
+#ifdef SSL_RESP
+				", %d ssl"
+#endif
+#endif // TEXT_REPLY
+				", %d rdr, %d sta"
+				, count, err, gif
+#ifdef TEXT_REPLY
+				, bad, txt
+#ifdef NULLSERV_REPLIES
+				, jpg, png, swf, ico
+#endif
+#ifdef SSL_RESP
+				, ssl
+#endif
+#endif // TEXT_REPLY
+				, rdr, sta
+			);
+	return retbuf;
+}
+#endif // DO_COUNT
 
 void signal_handler(int sig)    // common signal handler
 {
@@ -212,6 +250,9 @@ void signal_handler(int sig)    // common signal handler
 					break;
 				case SEND_REDIRECT:
 					rdr++;
+					break;
+				case SEND_STATS:
+					sta++;
 					break;
 #ifdef TEXT_REPLY
 				case SEND_BAD:
@@ -255,29 +296,11 @@ void signal_handler(int sig)    // common signal handler
 		signal(sig, SIG_IGN); // Ignore this signal while we are quiting
 #ifdef DO_COUNT
 	case SIGUSR1:
-		syslog(LOG_INFO, "%d req, %d err, %d gif,"
-#ifdef TEXT_REPLY
-					" %d bad, %d txt"
-#ifdef NULLSERV_REPLIES
-					", %d jpg, %d png, %d swf %d ico"
-#endif
-#ifdef SSL_RESP
-					", %d ssl"
-#endif
-#endif // TEXT_REPLY
-					", %d rdr"
-					, count, err, gif
-#ifdef TEXT_REPLY
-					, bad, txt
-#ifdef NULLSERV_REPLIES
-					, jpg, png, swf, ico
-#endif
-#ifdef SSL_RESP
-					, ssl
-#endif
-#endif // TEXT_REPLY
-					, rdr
-				);
+		{
+			char *stats_string = get_stats(0);
+			syslog(LOG_INFO, "%s", stats_string);
+			free(stats_string);
+		}
 
 		if (sig == SIGUSR1) {
 			return;
@@ -347,6 +370,16 @@ int main(int argc, char *argv[]) // program start
 	struct stat file_stat;
 	FILE *fp;
 #endif // READ_FILE
+
+#ifdef DO_COUNT
+	char *stats_path = DEFAULT_STATS_PATH;
+
+	static const char *httpstats =
+				"HTTP/1.1 200 OK\r\n"
+				"Content-type: text/plain\r\n"
+				"Content-length: %d\r\n"
+				"Connection: close\r\n\r\n%s";
+#endif
 
 #ifdef TEXT_REPLY
 	static const char *httpredirect = 
@@ -563,6 +596,11 @@ static unsigned char httpnull_ico[] =
 					fname = argv[++i];
 					break;
 #endif // READ_FILE
+#ifdef DO_COUNT
+				case 's':
+					stats_path = argv[++i];
+					break;
+#endif
 				default:
 					error = 1;
 				}
@@ -587,6 +625,9 @@ static unsigned char httpnull_ico[] =
 					" [-n i/f (all)]"
 					" [-u user (\"nobody\")]"
 					" [-r redirect encoded path (tracker links)]"
+#ifdef DO_COUNT
+					" [-s /statpath (" DEFAULT_STATS_PATH ")"
+#endif
 #ifdef READ_FILE
 					" [-f response.bin]"
 #ifdef READ_GIF
@@ -859,6 +900,14 @@ static unsigned char httpnull_ico[] =
 								char *path = strtok(NULL, " "); //, " ?#;=");     // "?;#:*<>[]='\"\\,|!~()"
 								if (path == NULL) {
 									MYLOG(LOG_ERR, "null path");
+#ifdef DO_COUNT
+								} else if (!strcmp(path, stats_path)) {
+									status = SEND_STATS;
+									char *stat_string = get_stats(1);
+									asprintf((char**)(&response), httpstats, strlen(stat_string), stat_string);
+									free(stat_string);
+									rsize = strlen((char*)response);
+#endif
 								} else {
 									/* pick out encoded urls (usually advert redirects) */
 									if (do_redirect && strstr(path, "=http") && strchr(path, '%')) {
@@ -959,6 +1008,11 @@ static unsigned char httpnull_ico[] =
 #endif
 				rv = send(new_fd, response, rsize, 0);
 
+#ifdef DO_COUNT
+				if (status == SEND_STATS) {
+					free(response);
+				}
+#endif
 #ifdef TExT_REPLY
 				if (status == SEND_REDIRECT) {
 					// free memory allocated by asprintf()
