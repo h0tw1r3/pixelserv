@@ -168,6 +168,7 @@ enum responsetypes {
 	SEND_JPG,
 	SEND_PNG,
 	SEND_SWF,
+	SEND_ICO,
 	SEND_BAD,
 	SEND_SSL,
 	SEND_REDIRECT
@@ -184,6 +185,7 @@ volatile sig_atomic_t bad = 0;
 volatile sig_atomic_t jpg = 0;
 volatile sig_atomic_t png = 0;
 volatile sig_atomic_t swf = 0;
+volatile sig_atomic_t ico = 0;
 #endif
 #ifdef SSL_RESP
 volatile sig_atomic_t ssl = 0;
@@ -231,6 +233,10 @@ void signal_handler(int sig)    // common signal handler
 				case SEND_SWF:
 					swf++;
 					break;
+
+				case SEND_ICO:
+					ico++;
+					break;
 #endif // NULLSERV_REPLIES
 #ifdef SSL_RESP
 				case SEND_SSL:
@@ -253,7 +259,7 @@ void signal_handler(int sig)    // common signal handler
 #ifdef TEXT_REPLY
 					" %d bad, %d txt"
 #ifdef NULLSERV_REPLIES
-					", %d jpg, %d png, %d swf"
+					", %d jpg, %d png, %d swf %d ico"
 #endif
 #ifdef SSL_RESP
 					", %d ssl"
@@ -264,7 +270,7 @@ void signal_handler(int sig)    // common signal handler
 #ifdef TEXT_REPLY
 					, bad, txt
 #ifdef NULLSERV_REPLIES
-					, jpg, png, swf
+					, jpg, png, swf, ico
 #endif
 #ifdef SSL_RESP
 					, ssl
@@ -482,6 +488,22 @@ int main(int argc, char *argv[]) // program start
 				"\x00\x00\x00"      // black
 				"\x40\x00"          // tag type 1 = show frame
 				"\x00\x00";         // tag type 0 - end file
+
+static unsigned char httpnull_ico[] =
+				"HTTP/1.1 200 OK\r\n"
+				"Content-type: image/x-icon\r\n"
+				"Content-length: 70\r\n"
+				"Connection: close\r\n"
+				"\r\n"
+				"\x00\x00\x01\x00\x01\x00\x01\x01"
+				"\x00\x00\x01\x00\x18\x00\x30\x00"
+				"\x00\x00\x16\x00\x00\x00\x28\x00"
+				"\x00\x00\x01\x00\x00\x00\x02\x00"
+				"\x00\x00\x01\x00\x18\x00\x00\x00"
+				"\x00\x00\x00\x00\x00\x00\x00\x00"
+				"\x00\x00\x00\x00\x00\x00\x00\x00"
+				"\x00\x00\x00\x00\x00\x00\x00\x00"
+				"\xff\x00\x00\x00\x00\x00";
 #endif
 
 #ifdef SSL_RESP
@@ -902,6 +924,11 @@ int main(int argc, char *argv[]) // program start
 													status = SEND_SWF;
 													response = httpnull_swf;
 													rsize = sizeof httpnull_swf - 1;
+												} else if (!strcasecmp(ext, ".ico")) {
+													TESTPRINT("Sending ico response\n");
+													status = SEND_ICO;
+													response = httpnull_ico;
+													rsize = sizeof httpnull_ico - 1;
 												}
 #else
 												if (!strncasecmp(ext, ".js", 3)) { // .jsx ?
