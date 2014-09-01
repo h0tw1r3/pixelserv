@@ -13,6 +13,8 @@
 #define DEFAULT_PORT "80"         // the default port users will be connecting to
 #define SECOND_PORT  "443"
 
+#define DEFAULT_TIMEOUT 10      // default timeout for select() calls, in seconds
+
 #define DEFAULT_USER "nobody"   // nobody used by dnsmasq
 
 #define MAX_PORTS 10
@@ -37,6 +39,9 @@
 #include <syslog.h>
 #include <pwd.h>                // for getpwnam
 #include <ctype.h>              // isdigit() & tolower()
+
+#define xstr(a) str(a)
+#define str(a) #a
 
 #ifdef HEX_DUMP
 /* from http://sws.dett.de/mini/hexdump-c/ */
@@ -335,6 +340,7 @@ int main(int argc, char *argv[]) // program start
 #ifdef TEST
 	char s[INET6_ADDRSTRLEN];
 #endif
+	time_t select_timeout = DEFAULT_TIMEOUT;
 	int rv;
 	char *ip_addr = DEFAULT_IP;
 	int use_ip = 0;
@@ -576,6 +582,12 @@ static unsigned char httpnull_ico[] =
 					ifname = argv[++i];
 					use_if = 1;
 					break;
+				case 'o':
+					select_timeout = strtol(argv[++i], NULL, 10);
+					if (errno) {
+						error = 1;
+					}
+					break;
 				case 'p':
 					if (num_ports < MAX_PORTS) {
 						ports[num_ports++] = argv[++i];
@@ -623,6 +635,7 @@ static unsigned char httpnull_ico[] =
 		printf("Usage: %s [OPTIONS...] [IP (default all)]\n"
 					"\t-p\tlisten on port\n\t\t** "DEFAULT_PORT" "SECOND_PORT"\n"
 					"\t-n\tbind to interface\n"
+					"\t-o\tselect timeout\n\t\t** "xstr(DEFAULT_TIMEOUT)" seconds\n"
 					"\t-u\trun as user\n\t\t** "DEFAULT_USER"\n"
 					"\t-r\tredirect encoded tracking links"
 #ifdef DO_COUNT
@@ -852,7 +865,7 @@ static unsigned char httpnull_ico[] =
 			FD_ZERO(&set);
 			FD_SET(new_fd, &set);
 			/* Initialize the timeout data structure */
-			timeout.tv_sec = 2;
+			timeout.tv_sec = select_timeout;
 			timeout.tv_usec = 0;
 
 			/* select returns 0 if timeout, 1 if input available, -1 if error */
@@ -1036,7 +1049,7 @@ static unsigned char httpnull_ico[] =
 					FD_ZERO(&set);
 					FD_SET(new_fd, &set);
 					/* Initialize the timeout data structure */
-					timeout.tv_sec = 2;
+					timeout.tv_sec = select_timeout;
 					timeout.tv_usec = 0;
 					/* select returns 0 if timeout, 1 if input available, -1 if error */
 					select_rv = select(new_fd + 1, &set, NULL, NULL, &timeout);
