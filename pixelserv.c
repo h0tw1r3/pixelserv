@@ -321,7 +321,7 @@ int main(int argc, char *argv[])        // program start
 
   char ifname[IFNAMSIZ];
 
-  char user[8] = DEFAULT_USER;  // used to be long enough
+  char *user = DEFAULT_USER;  // used to be long enough
   struct passwd *pw;
 
   int do_redirect = 0;
@@ -491,8 +491,7 @@ int main(int argc, char *argv[])        // program start
           ports[num_ports++] = atoi(argv[++i]);
           break;
         case 'u':
-          strncpy(user, argv[++i], sizeof user);
-          user[sizeof user - 1] = '\0';
+          user = argv[++i];
           break;
 #ifdef READ_FILE
 #ifdef READ_GIF
