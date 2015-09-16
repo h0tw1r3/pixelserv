@@ -620,18 +620,18 @@ static unsigned char httpnull_ico[] =
 
 	if (error) {
 #ifndef TINY
-		printf("Usage:%s" " [IP No/hostname (all)]"
-					" [-p port (80 and 443)]"
-					" [-n i/f (all)]"
-					" [-u user (\"nobody\")]"
-					" [-r redirect encoded path (tracker links)]"
+		printf("Usage: %s [OPTIONS...] [IP (default all)]\n"
+					"\t-p\tlisten on port\n\t\t** "DEFAULT_PORT" "SECOND_PORT"\n"
+					"\t-n\tbind to interface\n"
+					"\t-u\trun as user\n\t\t** "DEFAULT_USER"\n"
+					"\t-r\tredirect encoded tracking links"
 #ifdef DO_COUNT
-					" [-s /statpath (" DEFAULT_STATS_PATH ")"
+					"\n\t-s\tcounter statistics report url path\n\t\t** "DEFAULT_STATS_PATH
 #endif
 #ifdef READ_FILE
-					" [-f response.bin]"
+					"\n\t-f\tcustom file response"
 #ifdef READ_GIF
-					" [-g name.gif]"
+					"\n\t-g\tcustom gif response"
 #endif
 #endif // READ_FILE
 					"\n", argv[0]);
