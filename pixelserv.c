@@ -531,18 +531,30 @@ int main(int argc, char *argv[]) // program start
 static unsigned char httpnull_ico[] =
 				"HTTP/1.1 200 OK\r\n"
 				"Content-type: image/x-icon\r\n"
+				"Cache-Control: max-age=2592000\r\n"
 				"Content-length: 70\r\n"
 				"Connection: close\r\n"
 				"\r\n"
-				"\x00\x00\x01\x00\x01\x00\x01\x01"
-				"\x00\x00\x01\x00\x18\x00\x30\x00"
-				"\x00\x00\x16\x00\x00\x00\x28\x00"
-				"\x00\x00\x01\x00\x00\x00\x02\x00"
-				"\x00\x00\x01\x00\x18\x00\x00\x00"
-				"\x00\x00\x00\x00\x00\x00\x00\x00"
-				"\x00\x00\x00\x00\x00\x00\x00\x00"
-				"\x00\x00\x00\x00\x00\x00\x00\x00"
-				"\xff\x00\x00\x00\x00\x00";
+				"\x00\x00" // reserved 0
+				"\x01\x00" // ico
+				"\x01\x00" // 1 image
+				"\x01\x01\x00" // 1 x 1 x >8bpp colour
+				"\x00" // reserved 0
+				"\x01\x00" // 1 colour plane
+				"\x20\x00" // 32 bits per pixel
+				"\x30\x00\x00\x00" // size 48 bytes
+				"\x16\x00\x00\x00" // start of image 22 bytes in
+				"\x28\x00\x00\x00" // size of DIB header 40 bytes
+				"\x01\x00\x00\x00" // width
+				"\x02\x00\x00\x00" // height
+				"\x01\x00" // colour planes
+				"\x20\x00" // bits per pixel
+				"\x00\x00\x00\x00" // no compression
+				"\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"
+				"\x00\x00\x00\x00" // end of header
+				"\x00\x00\x00\x00" // Colour table
+				"\x00\x00\x00\x00" // XOR B G R
+				"\x80\xF8\x9C\x41"; // AND ?
 #endif
 
 #ifdef SSL_RESP
