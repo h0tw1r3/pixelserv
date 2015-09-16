@@ -7,11 +7,11 @@
 #define VERSION "0.34-2"
 
 #define BACKLOG 30              // how many pending connections queue will hold
-#define CHAR_BUF_SIZE 1023      //surprising how big requests can be with cookies etc
+#define CHAR_BUF_SIZE 2048      // surprising how big requests can be with cookies etc
 
-#define DEFAULT_IP "0.0.0.0"    // default IP address = all
-#define DEFAULT_PORT 80         // the default port users will be connecting to
-#define SECOND_PORT 443
+#define DEFAULT_IP "*"          // default IP address = all
+#define DEFAULT_PORT "80"         // the default port users will be connecting to
+#define SECOND_PORT  "443"
 
 #define DEFAULT_USER "nobody"   // nobody used by dnsmasq
 
@@ -33,9 +33,8 @@
 #include <sys/wait.h>
 #include <signal.h>
 #include <syslog.h>
-#include <net/if.h>             // for IFNAMSIZ
 #include <pwd.h>                // for getpwnam
-#include <ctype.h>
+#include <ctype.h>              // isdigit() & tolower()
 
 #ifdef HEX_DUMP
 /* from http://sws.dett.de/mini/hexdump-c/ */
@@ -308,18 +307,19 @@ int main(int argc, char *argv[]) // program start
 	char s[INET6_ADDRSTRLEN];
 #endif
 	int rv;
-	char ip_addr[INET_ADDRSTRLEN] = DEFAULT_IP;
+	char *ip_addr = DEFAULT_IP;
 	int use_ip = 0;
 	char buf[CHAR_BUF_SIZE + 1];
 
-	int *ports = malloc(MAX_PORTS * sizeof(int));
+	char *ports[MAX_PORTS];
+	int sockets[MAX_PORTS];
 	int num_ports = 0;
+	fd_set readfds;
 
 	int i;
 
-	fd_set readfds;
-
-	char ifname[IFNAMSIZ];
+	char *ifname = "";
+	int use_if = 0;
 
 	char *user = DEFAULT_USER; // used to be long enough
 	struct passwd *pw;
@@ -328,7 +328,7 @@ int main(int argc, char *argv[]) // program start
 #ifdef TEXT_REPLY
 	char *location = NULL;
 	char *url = NULL;
-	char *bufptr;
+	char *bufptr = NULL;
 #endif
 
 #ifdef READ_FILE
@@ -482,13 +482,16 @@ int main(int argc, char *argv[]) // program start
 			if ((i + 1) < argc) {
 				switch (argv[i][1]) {
 				case 'n':
-					strncpy(ifname, argv[++i], IFNAMSIZ);
-					ifname[IFNAMSIZ - 1] = '\0';
+					ifname = argv[++i];
+					use_if = 1;
 					break;
 				case 'p':
-					if (argv[i+1][0] == '-')
-							break;
-					ports[num_ports++] = atoi(argv[++i]);
+					if (num_ports < MAX_PORTS) {
+						ports[num_ports++] = argv[++i];
+					} else {
+						i++;
+						error = 1;
+					}
 					break;
 				case 'u':
 					user = argv[++i];
@@ -512,8 +515,7 @@ int main(int argc, char *argv[]) // program start
 				error = 1;
 			}
 		} else if (use_ip == 0) { // assume its a listening IP address
-			strncpy(ip_addr, argv[i], INET_ADDRSTRLEN);
-			ip_addr[INET_ADDRSTRLEN - 1] = '\0';
+			ip_addr = argv[i];
 			use_ip = 1;
 		} else {
 			error = 1; // fix bug with 2 IP like args
@@ -614,16 +616,12 @@ int main(int argc, char *argv[]) // program start
 	memset(&hints, 0, sizeof hints);
 	hints.ai_family = AF_UNSPEC; // AF_UNSPEC - AF_INET restricts to IPV4
 	hints.ai_socktype = SOCK_STREAM;
-	if (use_ip == 0) {
+	if (!use_ip) {
 		hints.ai_flags = AI_PASSIVE | AI_ADDRCONFIG; // use my IP
 	}
 
-	int *sockets = malloc(num_ports * sizeof(int));
-
-	char c[6];
-	for (i = 0; i < num_ports; ++i) {
-		sprintf(c, "%d", ports[i]);
-		rv = getaddrinfo(use_ip ? ip_addr : NULL, c, &hints, &servinfo);
+	for (i = 0; i < num_ports; i++) {
+		rv = getaddrinfo(use_ip ? ip_addr : NULL, ports[i], &hints, &servinfo);
 		if (rv != OK) {
 			syslog(LOG_ERR, "getaddrinfo: %s", gai_strerror(rv));
 			exit(EXIT_FAILURE);
@@ -635,7 +633,7 @@ int main(int argc, char *argv[]) // program start
 		}
 		if ((setsockopt(sockets[i], SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(int)) != OK)
 				/* only use selected i/f */
-				|| (strlen(ifname) > 1 && (setsockopt(sockets[i], SOL_SOCKET, SO_BINDTODEVICE, ifname, IFNAMSIZ) != OK))
+				|| (use_if && (setsockopt(sockets[i], SOL_SOCKET, SO_BINDTODEVICE, ifname, strlen(ifname)) != OK))
 				/* send short packets straight away */
 				|| (setsockopt(sockets[i], SOL_TCP, TCP_NODELAY, &yes, sizeof(int)) != OK)
 				/* try to prevent hanging processes in FIN_WAIT2 */
@@ -695,11 +693,8 @@ int main(int argc, char *argv[]) // program start
 		syslog(LOG_NOTICE, "Not running as root, ignoring setuid(%d)\n", pw->pw_uid);
 	}
 
-	syslog(LOG_NOTICE, "Listening on %s %s:%d", ifname, use_ip ? ip_addr : "*", ports[0]);
-	if (num_ports > 1) {
-		for (i = 1; i < num_ports; i++) {
-			syslog(LOG_NOTICE, "Also listening on %s %s:%d", ifname, use_ip ? ip_addr : "*", ports[i]);
-		}
+	for (i = 1; i < num_ports; i++) {
+		syslog(LOG_NOTICE, "Listening on %s %s:%s", use_if ? ifname : "", use_ip ? ip_addr : "*", ports[i]);
 	}
 
 	sin_size = sizeof their_addr;
@@ -707,12 +702,14 @@ int main(int argc, char *argv[]) // program start
 		sockfd = 0;
 		// clear the set
 		FD_ZERO(&readfds);
+		// add our descriptors to the set
 		for (i = 0; i < num_ports; i++) {
 			FD_SET(sockets[i], &readfds);
 		}
+		/* NOTE: MACRO needs "_GNU_SOURCE", without this the select gets interrupte with errno EINTR */
 		select_rv = TEMP_FAILURE_RETRY(select(FD_SETSIZE, &readfds, NULL, NULL, NULL));
 		if (select_rv < 0) {
-			perror("select(fd) error:");
+			syslog(LOG_ERR, "select(fd) error: %s", strerror(errno));
 			exit(EXIT_FAILURE);
 		}
 
@@ -792,7 +789,7 @@ int main(int argc, char *argv[]) // program start
 							MYLOG(LOG_ERR, "null method");
 						} else {
 							TESTPRINT("method: '%s'\n", method);
-							if (strcasecmp(method, "GET")) {
+							if (strcmp(method, "GET")) {
 								MYLOG(LOG_ERR, "unknown method: %s", method);
 								status = SEND_BAD;
 								TESTPRINT("Sending 501 response\n");
@@ -822,16 +819,16 @@ int main(int argc, char *argv[]) // program start
 											for (tok = strtok_r(NULL, "\r\n", &bufptr); tok; tok = strtok_r(NULL, "\r\n", &bufptr)) {
 												char *hkey = strtok(tok, ":");
 												char *hvalue = strtok(NULL, "\r\n");
-												if (strstr(hkey, "Referer")) {
-													if (strstr(hvalue, url)) {
-														url = NULL;
-														printf("%s:%s\n", hkey, hvalue);
-													}
+												if (strstr(hkey, "Referer") && strstr(hvalue, url)) {
+													url = NULL;
+													TESTPRINT("%s:%s\n", hkey, hvalue);
+													break;
 												}
 											}
 										}
 									}
 									if (do_redirect && url) {
+										location = NULL;
 										status = SEND_REDIRECT;
 										rsize = asprintf(&location, httpredirect, url);
 										response = (unsigned char *)(location);
