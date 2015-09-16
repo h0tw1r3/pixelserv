@@ -4,7 +4,12 @@
 * single pixel http string from http://proxytunnel.sourceforge.net/pixelserv.php
 */
 
-#define VERSION "0.34-2"
+#ifndef VERSION
+#define VERSION "????"
+#endif
+#ifndef BUILD_USER
+#define BUILD_USER "unknown"
+#endif
 
 #define BACKLOG 30              // how many pending connections queue will hold
 #define CHAR_BUF_SIZE 2048      // surprising how big requests can be with cookies etc
@@ -236,6 +241,13 @@ inline char* get_stats(int sta_offset) {
 	return retbuf;
 }
 #endif // DO_COUNT
+
+inline char *get_version(char *program_name)
+{
+	char *retbuf = NULL;
+	asprintf(&retbuf, "%s version %s (built %s %s by %s)", program_name, xstr(VERSION), __DATE__, __TIME__, xstr(BUILD_USER));
+	return retbuf;
+}
 
 void signal_handler(int sig)    // common signal handler
 {
@@ -661,6 +673,9 @@ static unsigned char httpnull_ico[] =
 #endif // READ_FILE
 					"\n", argv[0]);
 #endif // TINY
+		char *version_string = get_version(argv[0]);
+		printf("%s\n", version_string);
+		free(version_string);
 		exit(EXIT_FAILURE);
 	}
 
@@ -670,8 +685,9 @@ static unsigned char httpnull_ico[] =
 	}
 
 	openlog("pixelserv", LOG_PID | LOG_CONS | LOG_PERROR, LOG_DAEMON);
-	syslog(LOG_INFO, "%s version: %s compiled: %s from %s", argv[0], VERSION,
-				__DATE__ " " __TIME__, __FILE__);
+	char* version_string = get_version(argv[0]);
+	syslog(LOG_INFO, "%s", version_string);
+	free(version_string);
 
 #ifdef READ_FILE
 	if (fname) {

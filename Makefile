@@ -1,5 +1,6 @@
 DISTNAME   = pixelserv
 SRCS       = $(DISTNAME).c
+VERSION   := $(shell git describe --tags)
 
 OPTS      := -O2 -DDO_COUNT -DTEXT_REPLY -DREAD_FILE -DREAD_GIF -DNULLSERV_REPLIES -DSSL_RESP
 TEST_OPTS := -DTEST -DVERBOSE
@@ -7,7 +8,7 @@ TINY_OPTS := -Os -DTINY
 DEBUG_OPT := -DHEX_DUMP
 
 CC        := gcc
-CFLAGS    += -s -Wall -ffunction-sections -fdata-sections -fno-strict-aliasing
+CFLAGS    += -s -Wall -ffunction-sections -fdata-sections -fno-strict-aliasing -DBUILD_USER="$(USER)" -DVERSION="$(VERSION)"
 LDFLAGS   += -Wl,--gc-sections
 STRIP     := strip -s
 
