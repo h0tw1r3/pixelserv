@@ -50,3 +50,7 @@ x86: dist
 x86_64: dist
 	$(CC) -m64 $(CFLAGS) $(LDFLAGS) $(OPTS) $(SRCS) -o dist/$(DISTNAME).$@
 	$(STRIP) dist/$(DISTNAME).$@
+
+osx: dist
+	$(CC) -arch i386 -arch x86_64 $(CFLAGS) -Wno-deprecated-declarations -Wno-unused-variable $(OPTS) $(SRCS) -o dist/$(DISTNAME).$@
+	$(STRIP) dist/$(DISTNAME).$@

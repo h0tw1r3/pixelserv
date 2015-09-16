@@ -45,6 +45,8 @@
 #include <pwd.h>                // for getpwnam
 #include <ctype.h>              // isdigit() & tolower()
 
+#include "compat.h"
+
 #define xstr(a) str(a)
 #define str(a) #a
 
@@ -772,12 +774,15 @@ static unsigned char httpnull_ico[] =
 			exit(EXIT_FAILURE);
 		}
 		if ((setsockopt(sockets[i], SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(int)) != OK)
+#ifndef __APPLE__
 				/* only use selected i/f */
 				|| (use_if && (setsockopt(sockets[i], SOL_SOCKET, SO_BINDTODEVICE, ifname, strlen(ifname)) != OK))
 				/* send short packets straight away */
 				|| (setsockopt(sockets[i], SOL_TCP, TCP_NODELAY, &yes, sizeof(int)) != OK)
 				/* try to prevent hanging processes in FIN_WAIT2 */
-				|| (setsockopt(sockets[i], SOL_TCP, TCP_LINGER2, (void *)&n, sizeof n) != OK))
+				|| (setsockopt(sockets[i], SOL_TCP, TCP_LINGER2, (void *)&n, sizeof n) != OK)
+#endif
+				)
 		{
 			syslog(LOG_ERR, "Failed to setsockopt: %m");
 			exit(EXIT_FAILURE);
