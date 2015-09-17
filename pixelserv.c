@@ -1059,7 +1059,7 @@ static unsigned char httpnull_ico[] =
 					free(response);
 				}
 #endif
-#ifdef TExT_REPLY
+#ifdef TEXT_REPLY
 				if (status == SEND_REDIRECT) {
 					// free memory allocated by asprintf()
 					free(location);
